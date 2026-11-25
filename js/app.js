@@ -1,4 +1,4 @@
-/* MECADATA v9.0 — noyau, studio, accès, UI, autovérification massive */
+/* MECADATA v9.1 — noyau, studio, accès, UI, autovérification massive */
 (function () {
   "use strict";
   var D = document;
@@ -65,7 +65,7 @@
   function closeModal() { var r = $("#md"); if (!r.innerHTML) return; r.classList.remove("on"); modalOpen = false; if (!S.drawer) D.body.classList.remove("lock"); setTimeout(function () { if (!modalOpen) r.innerHTML = ""; }, 220); beep("close"); }
   function confirmModal(t, m, a, l) { openModal("<div class='mh'>" + ic("alert", "color:#FFAF2E") + "<h3>" + esc(t) + "</h3><button class='tb' data-act='mclose'>" + ic("x") + "</button></div><div class='mb2'><p class='muted'>" + esc(m) + "</p></div><div class='mf'><button class='btn ghost' data-act='mclose'>Annuler</button><button class='btn dgr' data-act='" + a + "'>" + esc(l || "Confirmer") + "</button></div>", "slim"); }
 
-  /* ── STUDIO ── */
+  /* ── STUDIO 8 SCÈNES ── */
   var WP = {
     P: { mode: "nebula", theme: "diag", useCustom: false, custom: { bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" }, density: 64, count: 150, speed: 100, turb: 38, scale: 66, glow: 60, blur: 0, stroke: 1.4, drift: 40, dir: 1, quality: "std", grid: true, run: true, bg: true },
     TH: { diag: { n: "Diagnostic", bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" }, torque: { n: "Couple", bg: "#0B0603", a: "#FFAF2E", b: "#FF7A3D", c: "#FF4D5E", d: "#FFD98A" }, acid: { n: "Acide", bg: "#040A06", a: "#A8E63C", b: "#43E08B", c: "#25D4EE", d: "#E4FF7A" }, plasma: { n: "Plasma", bg: "#08040F", a: "#E45CFF", b: "#8F7CFF", c: "#25D4EE", d: "#FF6FB1" }, ocean: { n: "Océan", bg: "#02080C", a: "#19B8A6", b: "#4D8DFF", c: "#25D4EE", d: "#7CE8D0" }, steel: { n: "Acier", bg: "#070A0E", a: "#9FB2C8", b: "#5F7288", c: "#25D4EE", d: "#E6EEF9" }, ember: { n: "Braise", bg: "#0A0405", a: "#FF4D5E", b: "#FF7A3D", c: "#FFAF2E", d: "#FFC9A8" }, violet: { n: "Violet", bg: "#06040F", a: "#8F7CFF", b: "#E45CFF", c: "#4D8DFF", d: "#C9BFFF" } },
@@ -135,7 +135,7 @@
       c.globalCompositeOperation = "source-over"; c.globalAlpha = 1;
     },
     label: function (k, v) { var u = { density: "%", speed: "%", turb: "%", glow: "%", scale: " px", stroke: " px", blur: " px", drift: "%", count: "" }; return ((k === "stroke" || k === "blur") ? Number(v).toFixed(1) : Math.round(v)) + (u[k] || ""); },
-    sync: function () { var P = this.P, rb = $("#runb"); if (rb) { rb.innerHTML = ic(P.run ? "pause" : "play"); rb.classList.toggle("on", P.run); } $$(".mb").forEach(function (b) { b.classList.toggle("on", b.dataset.m === P.mode); }); $$(".pb").forEach(function (b) { b.classList.toggle("on", !P.useCustom && b.dataset.t === P.theme); }); $$("[data-p]").forEach(function (el) { var k = el.dataset.p, v = P[k]; if (el.type === "checkbox") el.checked = !!v; else el.value = v; var o = $("[data-pv='" + k + "']"); if (o) o.textContent = WP.label(k, v); }); $$("[data-c]").forEach(function (el) { el.value = P.custom[el.dataset.c]; }); var ct = $("#customToggle"); if (ct) ct.checked = !!P.useCustom; var h = $("#hud"); if (h) h.innerHTML = "<span>" + P.mode.toUpperCase() + "</span><span>" + esc(this.pal().n).toUpperCase() + "</span><span>" + (P.dir > 0 ? "AVANT" : "ARRIÈRE") + "</span><span>" + (P.run ? "LIVE" : "PAUSE") + "</span>"; }
+    sync: function () { var P = this.P, rb = $("#runb"); if (rb) { rb.innerHTML = ic(P.run ? "pause" : "play"); rb.classList.toggle("on", P.run); } $$(".mb").forEach(function (b) { b.classList.toggle("on", b.dataset.m === P.mode); }); $$(".pb").forEach(function (b) { b.classList.toggle("on", !P.useCustom && b.dataset.t === P.theme); }); $$("[data-p]").forEach(function (el) { var k = el.dataset.p, v = P[k]; if (el.type === "checkbox") el.checked = !!v; else if (el !== D.activeElement) el.value = v; var o = $("[data-pv='" + k + "']"); if (o) o.textContent = WP.label(k, v); }); $$("[data-c]").forEach(function (el) { if (el !== D.activeElement) el.value = P.custom[el.dataset.c]; }); var ct = $("#customToggle"); if (ct) ct.checked = !!P.useCustom; var h = $("#hud"); if (h) h.innerHTML = "<span>" + P.mode.toUpperCase() + "</span><span>" + esc(this.pal().n).toUpperCase() + "</span><span>" + (P.dir > 0 ? "AVANT" : "ARRIÈRE") + "</span><span>" + (P.run ? "LIVE" : "PAUSE") + "</span>"; }
   };
   function hsl(h, s, l) { s /= 100; l /= 100; var k = function (n) { return (n + h / 30) % 12; }, a = s * Math.min(l, 1 - l), f = function (n) { var v = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return Math.round(255 * v).toString(16).padStart(2, "0"); }; return "#" + f(0) + f(8) + f(4); }
 
@@ -612,33 +612,46 @@
     }
     return h;
   }
+  function testListHTML() {
+    var fq = S.testFilter.trim().toLowerCase(), h = "", n = 0;
+    TESTS.forEach(function (t) {
+      if (fq && (t.n + " " + t.info).toLowerCase().indexOf(fq) < 0) return;
+      n++;
+      var c = t.ok ? "#43E08B" : (t.soft ? "#FFAF2E" : "#FF4D5E");
+      h += "<div class='tst' style='--tc:" + c + "'><span class='ti'>" + (t.ok ? "OK" : (t.soft ? "!" : "X")) + "</span><div style='flex:1'><b>" + esc(t.n) + "</b><small>" + esc(t.info) + "</small></div></div>";
+    });
+    if (!n) h = "<div class='empty'>" + ic("search") + "<p>Aucun contrôle ne correspond au filtre.</p></div>";
+    return h;
+  }
   function vDiag() {
     var fl = TESTS.filter(function (t) { return !t.ok && !t.soft; }).length, wn = TESTS.filter(function (t) { return !t.ok && t.soft; }).length;
     var col = fl ? "#FF4D5E" : (wn ? "#FFAF2E" : "#43E08B"), h = "";
     h += "<div class='vh'><div><span class='kick'>MODULE 07 — AUTOVÉRIFICATION MASSIVE</span><h1>DIAGNOSTIC <i>SYSTÈME</i></h1><div class='sub'>" + TESTS.length + " contrôles : données, référentiel, plans 200 000 km, corrélations, recherche, accès, rendu, studio, import.</div></div>";
     h += "<div style='display:flex;gap:7px;flex-wrap:wrap'><button class='btn sm grn' data-act='runTests'>" + ic("reset") + "Relancer</button>";
-    if (isAdmin()) h += "<button class='btn sm amb' data-act='autoFix'>" + ic("tool") + "Auto-réparation</button>";
-    h += "<button class='btn sm ghost' data-act='expTests'>" + ic("dl") + "Rapport</button></div></div>";
-    h += "<div class='card panel' style='margin-bottom:12px;border-left:3px solid " + col + "'><h3>" + ic("stetho", "color:" + col) + "Résultat<span class='chip' style='color:" + col + ";border-color:" + col + "'>" + (TESTS.length - fl) + "/"" + TESTS.length + " OK</span></h3>";
+    if (isAdmin()) h += "<button class='btn sm amb' data-act='autoFix'>" + ic("tool") + "Auto-réparation</button><button class='btn sm ghost' data-act='expTests'>" + ic("dl") + "Rapport</button>";
+    h += "</div></div>";
+    h += "<div class='card panel' style='margin-bottom:12px;border-left:3px solid " + col + "'><h3>" + ic("stetho", "color:" + col) + "Résultat<span class='chip' style='color:" + col + ";border-color:" + col + "'>" + (TESTS.length - fl) + "/" + TESTS.length + " OK</span></h3>";
     h += "<p class='muted'>" + (fl ? "<b style='color:#FF4D5E'>" + fl + " test(s) bloquant(s).</b>" : "<b style='color:#43E08B'>Système opérationnel — aucune erreur au démarrage.</b>") + (wn ? " " + wn + " avertissement(s) non bloquant(s)." : "") + (FIXES ? " <span class='mono' style='color:#43E08B'>" + FIXES + " réparation(s) automatique(s).</span>" : "") + "</p></div>";
     h += "<div class='card panel'><h3>" + ic("check") + "Détail des contrôles<span class='chip'>" + TESTS.length + "</span></h3>";
     h += "<input class='inp' type='search' data-tfilter='1' value='" + esc(S.testFilter) + "' placeholder='Filtrer les contrôles…' style='margin-bottom:9px'>";
-    h += "<div class='tests'>";
-    var fq = S.testFilter.trim().toLowerCase();
-    TESTS.forEach(function (t) {
-      if (fq && (t.n + " " + t.info).toLowerCase().indexOf(fq) < 0) return;
-      var c = t.ok ? "#43E08B" : (t.soft ? "#FFAF2E" : "#FF4D5E");
-      h += "<div class='tst' style='--tc:" + c + "'><span class='ti'>" + (t.ok ? "OK" : (t.soft ? "!" : "X")) + "</span><div style='flex:1'><b>" + esc(t.n) + "</b><small>" + esc(t.info) + "</small></div></div>";
-    });
-    h += "</div></div>"; return h;
+    h += "<div class='tests' id='testList'>" + testListHTML() + "</div></div>";
+    return h;
   }
   function render() {
     var v = S.view, m = $("#view"); if (v !== "studio") WP.detach();
+    var act = D.activeElement, sel = null, caret = null;
+    if (act && act.dataset) {
+      if (act.dataset.f) sel = "[data-f='" + act.dataset.f + "']";
+      else if (act.dataset.tf) sel = "[data-tf='" + act.dataset.tf + "']";
+      else if (act.dataset.mega) sel = "[data-mega='" + act.dataset.mega + "']";
+      if (sel) { try { caret = act.selectionStart; } catch (e) { caret = null; } }
+    }
     $$(".nv,#tabs a").forEach(function (a) { a.classList.toggle("on", a.dataset.v === v); });
     var h = "";
     try { h = v === "bord" ? vBord() : v === "explorer" ? vExplorer() : v === "tech" ? vTech() : v === "entretien" ? vEntretien() : v === "studio" ? vStudio() : v === "admin" ? vAdmin() : vDiag(); }
     catch (e) { logErr("render " + v, e); h = "<div class='card panel'><h3>" + ic("alert") + "Erreur de rendu</h3><p class='muted'>" + esc(e.message) + "</p></div>"; }
     m.innerHTML = h; mountAnim(m); updateMeta();
+    if (sel) { var el = $(sel, m); if (el) { el.focus(); if (caret !== null) { try { el.setSelectionRange(caret, caret); } catch (e) {} } } }
     if (v === "studio") { var cv = $("#pv"); if (cv) { WP.attach(cv); WP.fx(); WP.sync(); } }
   }
   function updateMeta() {
@@ -744,7 +757,7 @@
   function runTests() {
     var T = [];
     function add(n, ok, i, s) { T.push({ n: n, ok: !!ok, info: i || "", soft: !!s }); }
-    add("Noyau démarré", window.__MD_READY === true || true, "séquence d'initialisation complète");
+    add("Noyau initialisé", !!DB && !!MIDX && Object.keys(MIDX).length > 0, DB ? Object.keys(MIDX).length + " modèles indexés" : "index vide");
     add("Données chargées", !!window.MD_RAW, "MD_RAW présent");
     add("Base construite", !!DB && DB.engines.length > 0, DB ? fmt(DB.engines.length) + " motorisations" : "ABSENTE");
     add("Marques ≥ 100", DB.brands.length >= 100, DB.brands.length + " marques");
@@ -883,7 +896,7 @@
     } else {
       var u = tierUser();
       if (u && u.status === "granted") h += "<div class='gform'><div class='gwait'><div class='gi' style='width:52px;height:52px;margin:0 auto 12px;color:#43E08B;border-color:rgba(67,224,139,.45);background:rgba(67,224,139,.14)'>" + ic("check", "width:24px;height:24px") + "</div><h3 style='font:600 15px var(--gd)'>Accès accordé — " + esc(u.name) + "</h3><p class='muted' style='font-size:12px;margin:7px 0 13px'>L'administrateur a validé votre demande. Consultation en lecture seule.</p><button class='btn pri' data-act='tierEnter'>" + ic("unlock") + "ENTRER EN CONSULTATION</button><div style='margin-top:9px'><button class='btn sm ghost' data-act='gateBack'>Retour</button></div></div></div>";
-      else if (u && u.status === "pending") h += "<div class='gform'><div class='gwait'><div class='spin'></div><h3 style='font:600 15px var(--gd)'>Demande envoyée — " + esc(u.name) + "</h3><p class='muted' style='font-size:12px;margin-top:7px'>En attente de validation par l'administrateur. Cet écran se met à jour automatiquement dès la décision.</p><button class='btn sm ghost' data-act='tierCancel' style='margin-top:12px'>Annuler la demande</button></div></div>";
+      else if (u && u.status === "pending") h += "<div class='gform'><div class='gwait'><div class='spin'></div><h3 style='font:600 15px var(--gd)'>Demande envoyée — " + esc(u.name) + "</h3><p class='muted' style='font-size:12px;margin-top:7px'>En attente de validation par l'administrateur. Cet écran se met à jour automatiquement dès la décision.</p><div style='display:flex;gap:8px;justify-content:center;margin-top:13px;flex-wrap:wrap'><button class='btn sm amb' data-act='gateAdmin'>" + ic("shield") + "OUVRIR SESSION ADMINISTRATEUR</button><button class='btn sm ghost' data-act='tierCancel'>Annuler la demande</button></div><p class='gnote'>Sur cet appareil : ouvrez la session administrateur, acceptez la demande dans Administration → Accès tiers, puis quittez pour revenir ici.</p></div></div>";
       else if (u) h += "<div class='gform'><div class='gwait'><h3 style='font:600 15px var(--gd);color:#FF4D5E'>Accès " + (u.status === "denied" ? "refusé" : "révoqué") + "</h3><p class='muted' style='font-size:12px;margin:7px 0 12px'>L'administrateur a " + (u.status === "denied" ? "refusé" : "révoqué") + " cet accès. Vous pouvez soumettre une nouvelle demande avec le mot de passe tiers.</p><button class='btn sm ghost' data-act='tierReset'>Nouvelle demande</button> <button class='btn sm ghost' data-act='gateBack'>Retour</button></div></div>";
       else {
         h += "<div class='gform'><label class='lb'>Votre prénom</label><form data-form='tier'><input class='inp' type='text' name='name' id='gateName' maxlength='24' placeholder='Prénom' autocomplete='off' style='text-align:center;font-size:15px'>";
@@ -897,14 +910,14 @@
   function gateShow(mode) { GATE_MODE = mode || null; var g = $("#gate"); g.classList.remove("off"); g.innerHTML = gateHTML(GATE_MODE); if (GATE_MODE === "admin") { var p = $("#gatePwd"); if (p) { p.value = ""; setTimeout(function () { p.focus(); }, 80); } } if (GATE_MODE === "tier") { var n = $("#gateName"); if (n) setTimeout(function () { n.focus(); }, 80); var tp = $("#gateTierPwd"); if (tp) tp.value = ""; } }
   function gateHide() { $("#gate").classList.add("off"); }
   function enterAdmin() {
-    MODE = "admin"; TIER = null; gateHide(); DB = clone(SEED);
+    MODE = "admin"; gateHide(); DB = clone(SEED);
     var raw = STORE.get(KEY);
     if (raw) safe("load", function () { var d = JSON.parse(raw); if (d && d.db && d.db.engines && d.db.engines.length) { DB = d.db; AUDIT = d.audit || []; if (d.prefs) Object.keys(d.prefs).forEach(function (k) { PREF[k] = d.prefs[k]; }); if (d.wp) Object.keys(d.wp).forEach(function (k) { WP.P[k] = d.wp[k]; }); LASTSAVE = d.ts || 0; } }, null);
-    FIXES += sanitize(DB); recompute(); WP.apply(); audit("adm", "Session ING-3 ouverte"); saveNow(); runTests(); S.view = "bord"; location.hash = "#/bord"; render();
+    sanitize(DB); recompute(); WP.apply(); audit("adm", "Session ING-3 ouverte"); saveNow(); runTests(); S.view = "bord"; location.hash = "#/bord"; render();
     toast("ok", "Session administrateur", "Imports, exports et mises à jour massives déverrouillés."); beep("imp");
   }
-  function enterTier() { var u = tierUser(); if (!u || u.status !== "granted") { gateShow("tier"); return; } MODE = "tier"; gateHide(); if (!applyTierSnapshot()) { DB = clone(SEED); FIXES += sanitize(DB); } recompute(); WP.apply(); runTests(); S.view = "bord"; location.hash = "#/bord"; render(); toast("info", "Consultation tiers", "Lecture seule — rév. " + (REG.rev || 0) + ". Imports, exports et sauvegarde bloqués."); beep("ok"); }
-  function tierSync() { if (!isTier()) return; var u = tierUser(); if (!u || u.status !== "granted") { MODE = null; TIER = null; gateShow("tier"); render(); toast("err", "Accès révoqué", "L'administrateur a retiré cet accès."); return; } if (applyTierSnapshot()) { recompute(); updateMeta(); render(); toast("info", "Base mise à jour", "Révision " + REG.rev + " diffusée par l'administrateur."); } }
+  function enterTier() { var u = tierUser(); if (!u || u.status !== "granted") { gateShow("tier"); return; } MODE = "tier"; gateHide(); if (!applyTierSnapshot()) { DB = clone(SEED); sanitize(DB); } recompute(); WP.apply(); runTests(); S.view = "bord"; location.hash = "#/bord"; render(); toast("info", "Consultation tiers", "Lecture seule — rév. " + (REG.rev || 0) + ". Imports, exports et sauvegarde bloqués."); beep("ok"); }
+  function tierSync() { if (!isTier()) return; var u = tierUser(); if (!u || u.status !== "granted") { MODE = null; gateShow("tier"); render(); toast("err", "Accès révoqué", "L'administrateur a retiré cet accès."); return; } if (applyTierSnapshot()) { recompute(); updateMeta(); render(); toast("info", "Base mise à jour", "Révision " + REG.rev + " diffusée par l'administrateur."); } }
 
   /* ── ÉVÉNEMENTS ── */
   function bind() {
@@ -929,7 +942,7 @@
       if (a === "goPlan") { location.hash = "#/entretien"; return; }
       if (a === "runTests") { runTests(); location.hash = "#/diagnostic"; render(); return; }
       if (a === "autoFix") { autoFix(); return; }
-      if (a === "expTests") { download("mecadata_autoverification.json", JSON.stringify({ date: new Date().toISOString(), counts: META.counts, integrity: META.integ, tests: TESTS }, null, 2)); toast("ok", "Rapport exporté", TESTS.length + " contrôles"); beep("ok"); return; }
+      if (a === "expTests") { if (!isAdmin()) { toast("err", "Export refusé", "Réservé à l'administrateur."); return; } download("mecadata_autoverification.json", JSON.stringify({ date: new Date().toISOString(), counts: META.counts, integrity: META.integ, tests: TESTS }, null, 2)); toast("ok", "Rapport exporté", TESTS.length + " contrôles"); beep("ok"); return; }
       if (a === "integrity") { var g = META.integ, h = "<div class='mh'>" + ic("check") + "<h3>Intégrité de la méga-base</h3><button class='tb' data-act='mclose'>" + ic("x") + "</button></div><div class='mb2'><div class='rep' style='max-height:none'><b class='" + (g.ok ? "ok" : "rj") + "'>" + (g.ok ? "BASE INTÈGRE" : "ERREURS") + "</b> — score " + g.pct + "% · " + fmt(META.links) + " liaisons · " + fmt(META.corr) + " corrélations"; if (g.err.length) { h += "<ul>"; g.err.slice(0, 25).forEach(function (e) { h += "<li class='rj'>" + esc(e) + "</li>"; }); h += "</ul>"; } else h += "<p class='ok' style='margin-top:7px'>Aucune référence orpheline, aucun id dupliqué, sévérités normalisées.</p>"; if (FIXES) h += "<p class='wn' style='margin-top:7px'>" + FIXES + " réparation(s) automatique(s) appliquée(s).</p>"; h += "</div></div><div class='mf'><button class='btn pri' data-act='mclose'>Fermer</button></div>"; openModal(h); return; }
       if (a === "undo") { doUndo(); return; }
       if (a === "mclose") { closeModal(); return; }
@@ -965,8 +978,8 @@
         regSave(); updateMeta(); render(); beep(a === "accGrant" ? "ok" : "del"); return;
       }
       if (a === "askReset") { if (!isAdmin()) return; confirmModal("Réinitialiser la base ?", "Toutes les modifications et imports sont remplacés par la base usine. Annulation possible 8 s.", "doReset", "Réinitialiser"); return; }
-      if (a === "doReset") { closeModal(); snapshot("reset"); DB = clone(SEED); FIXES += sanitize(DB); mutate("del", "Base usine restaurée"); saveNow(); toast("warn", "Base usine restaurée", "", true); return; }
-      if (a === "logout") { MODE = null; TIER = null; gateShow(null); updateMeta(); toast("info", "Session fermée"); return; }
+      if (a === "doReset") { closeModal(); snapshot("reset"); DB = clone(SEED); sanitize(DB); mutate("del", "Base usine restaurée"); saveNow(); toast("warn", "Base usine restaurée", "", true); return; }
+      if (a === "logout") { MODE = null; gateShow(TIER ? "tier" : null); updateMeta(); toast("info", "Session fermée"); return; }
       if (a === "stMode") { WP.set("mode", el.dataset.m); beep("tick"); return; }
       if (a === "stTheme") { WP.P.useCustom = false; WP.set("theme", el.dataset.t); beep("tick"); return; }
       if (a === "stPreset") { var ps = WP.PRESETS[el.dataset.n]; if (ps) { Object.keys(ps).forEach(function (k) { WP.P[k] = ps[k]; }); WP.apply(); WP.resize(); render(); toast("ok", "Preset appliqué", el.dataset.n); beep("ok"); } return; }
@@ -979,7 +992,7 @@
     D.addEventListener("input", function (ev) {
       var t = ev.target; if (!t) return;
       if (t.id === "omni") { S.omni.q = t.value; omniRender(); return; }
-      if (t.dataset && t.dataset.tfilter) { S.testFilter = t.value; deb(render, 150)(); return; }
+      if (t.dataset && t.dataset.tfilter) { S.testFilter = t.value; var tl = $("#testList"); if (tl) tl.innerHTML = testListHTML(); return; }
       if (t.dataset && t.dataset.c) { WP.setCustom(t.dataset.c, t.value); return; }
       if (t.dataset && t.dataset.p) { var k = t.dataset.p, v = t.type === "checkbox" ? t.checked : (t.tagName === "SELECT" ? (k === "dir" ? +t.value : t.value) : +t.value); WP.set(k, v); return; }
       if (t.dataset && t.dataset.f) { S.f[t.dataset.f] = t.value; if (t.dataset.f === "region") S.sel = { b: "", m: "", e: "" }; S.shown = 48; deb(render, 140)(); return; }
@@ -1034,10 +1047,10 @@
     setInterval(function () { if (isAdmin()) { var pc = pendingCount(); if (pc > PENDING) { PENDING = pc; toast("warn", "Nouvelle demande d'accès", pc + " demande(s) en attente de validation."); beep("imp"); updateMeta(); if (S.view === "admin") render(); } else PENDING = pc; } }, 1500);
   }
   function route() { var h = (location.hash || "#/bord").replace("#/", ""); var allowed = isTier() ? ["bord", "explorer", "tech", "entretien", "studio", "diagnostic"] : ["bord", "explorer", "tech", "entretien", "studio", "admin", "diagnostic"]; S.view = allowed.indexOf(h) > -1 ? h : "bord"; render(); }
-  function boot() { var o = $("#boot"), done = function () { if (!o) return; o.className = "off"; }; var L = [["Noyau MECADATA v9.0", 12], ["Méga-base 2017→2027 toutes régions", 34], [DB.brands.length + " marques · " + DB.models.length + " modèles", 58], [fmt(DB.engines.length) + " motorisations", 78], [DB.faults.length + " pannes · " + DB.tsb.length + " TSB/rappels", 92], ["Portail d'accès prêt", 100]]; var lg = $("#bl"), i = 0, step = function () { if (i >= L.length) { setTimeout(done, 260); return; } var x = L[i++], d = D.createElement("div"); d.innerHTML = "<b>OK</b> " + esc(x[0]); lg.appendChild(d); while (lg.children.length > 5) lg.removeChild(lg.firstChild); $("#bbar").style.width = x[1] + "%"; setTimeout(step, 110); }; setTimeout(step, 120); setTimeout(done, 2600); }
+  function boot() { var o = $("#boot"), done = function () { if (!o) return; o.className = "off"; }; var L = [["Noyau MECADATA v9.1", 12], ["Méga-base 2017→2027 toutes régions", 34], [DB.brands.length + " marques · " + DB.models.length + " modèles", 58], [fmt(DB.engines.length) + " motorisations", 78], [DB.faults.length + " pannes · " + DB.tsb.length + " TSB/rappels", 92], ["Portail d'accès prêt", 100]]; var lg = $("#bl"), i = 0, step = function () { if (i >= L.length) { setTimeout(done, 260); return; } var x = L[i++], d = D.createElement("div"); d.innerHTML = "<b>OK</b> " + esc(x[0]); lg.appendChild(d); while (lg.children.length > 5) lg.removeChild(lg.firstChild); $("#bbar").style.width = x[1] + "%"; setTimeout(step, 110); }; setTimeout(step, 120); setTimeout(done, 2600); }
   function init() {
     if (!window.MD_RAW) { logErr("init", new Error("MD_RAW absent")); window.__MD_READY = false; return; }
-    SEED = build(window.MD_RAW); FIXES += sanitize(SEED); DB = clone(SEED);
+    SEED = build(window.MD_RAW); sanitize(SEED); DB = clone(SEED);
     regLoad(); recompute();
     try { if (window.BroadcastChannel) { CH = new BroadcastChannel("mecadata_v9"); CH.onmessage = function (ev) { var m = ev.data || {}; if (m.t === "reg") { regLoad(); if (isTier()) tierSync(); else if (isAdmin()) { updateMeta(); if (S.view === "admin") render(); } else if (GATE_MODE === "tier") gateShow("tier"); } if (m.t === "pub" && isTier()) tierSync(); }; } } catch (e) {}
     WP.init(); bind(); runTests(); updateMeta(); boot(); gateShow(null);
