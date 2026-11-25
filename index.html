@@ -7,14 +7,12 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Méga-base technique automobile 2017-2027 : sélection marque/modèle/phase/motorisation, pannes connues détaillées, campagnes de rappel, TSB, plans d'entretien jusqu'à 200 000 km, accès tiers contrôlé et studio de fonds dynamiques.">
-<title>MECADATA // INGÉNIEUR EXPERT v9.1</title>
+<meta name="description" content="Méga-base technique automobile 2017-2027 : marque/modèle/phase/motorisation, pannes connues, rappels, TSB, plans d'entretien jusqu'à 200 000 km.">
+<title>MECADATA // INGÉNIEUR EXPERT v9.2</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
-<link rel="mask-icon" href="icons/icon.svg" color="#FFD60A">
 <style>
 :root{--bg:#04070D;--s1:#0C1424;--s2:#111C31;--ln:rgba(96,160,255,.16);--ln2:rgba(255,214,10,.42);--tx:#E6EEF9;--t2:#9FB2C8;--t3:#61748C;--cy:#25D4EE;--bl:#4D8DFF;--mg:#E45CFF;--ye:#FFD60A;--am:#FFAF2E;--rd:#FF4D5E;--gr:#43E08B;--gb:linear-gradient(135deg,#FFF5AA,#FFD60A 45%,#FFA800);--gd:'Chakra Petch',system-ui,sans-serif;--gm:'IBM Plex Mono',ui-monospace,Menlo,monospace;--gb2:system-ui,'Segoe UI',Roboto,sans-serif;--tb:54px;--sb:26px}
 *{box-sizing:border-box;margin:0;padding:0;scrollbar-width:thin;scrollbar-color:#1E7E96 #080D17}
@@ -33,8 +31,7 @@ svg.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-wid
 .vch{font:500 10px var(--gm);color:var(--ye);border:1px solid var(--ln2);background:rgba(255,214,10,.08);padding:2px 7px;border-radius:18px}
 .omni{position:relative;flex:1;max-width:520px;margin:0 auto}.omni .box{display:flex;align-items:center;gap:7px;background:var(--s1);border:1px solid var(--ln);border-radius:9px;padding:0 10px;height:36px;transition:.18s}
 .omni .box:focus-within{border-color:var(--ln2);box-shadow:0 0 0 3px rgba(255,214,10,.1)}
-.omni input{flex:1;background:none;border:0;outline:0;height:100%;font-size:13px;min-width:0}
-.omni input::placeholder{color:var(--t3)}
+.omni input{flex:1;background:none;border:0;outline:0;height:100%;font-size:13px;min-width:0}.omni input::placeholder{color:var(--t3)}
 .omni kbd{font:400 9px var(--gm);color:var(--t3);border:1px solid var(--ln);border-radius:4px;padding:1px 5px}
 #omnires{position:absolute;top:42px;left:0;right:0;max-height:64vh;overflow:auto;background:rgba(9,14,26,.99);border:1px solid var(--ln2);border-radius:11px;box-shadow:0 18px 50px rgba(0,0,0,.7);display:none;z-index:80}
 #omnires.on{display:block}
@@ -65,8 +62,7 @@ svg.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-wid
 #tabs{display:none;position:fixed;left:0;right:0;bottom:0;z-index:60;height:58px;background:rgba(6,10,18,.98);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom)}
 #tabs a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--t3);font:500 7.5px var(--gd)}#tabs a.on{color:var(--ye)}
 #status{position:fixed;left:0;right:0;bottom:0;height:var(--sb);z-index:55;display:flex;align-items:center;gap:14px;padding:0 12px;font:400 9.5px var(--gm);color:var(--t3);background:rgba(6,10,18,.95);border-top:1px solid var(--ln);overflow-x:auto;white-space:nowrap}
-#status b{color:var(--cy);font-weight:500}
-#stPwa{color:var(--gr)}#stPwa.off{color:var(--rd)}
+#status b{color:var(--cy);font-weight:500}#stPwa{color:var(--gr)}#stPwa.off{color:var(--rd)}
 .kick{font:400 10px var(--gm);letter-spacing:.2em;color:var(--ye);display:flex;align-items:center;gap:7px}.kick:before{content:"";width:20px;height:1px;background:var(--gb)}
 .vh{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .vh h1{font:600 clamp(19px,3vw,26px)/1.15 var(--gd);margin-top:3px}.vh h1 i{color:var(--ye);font-style:normal}.vh .sub{color:var(--t2);font-size:12px;margin-top:2px;max-width:80ch}
@@ -198,7 +194,12 @@ input[type=checkbox]{accent-color:#FFD60A}
 #boot h1{font:600 18px var(--gd)}#boot h1 i{color:var(--ye);font-style:normal}
 .bb{width:min(320px,80vw);height:4px;border-radius:4px;background:#111C31;overflow:hidden}.bb i{display:block;height:100%;width:0;background:var(--gb);transition:width .3s;box-shadow:0 0 12px rgba(255,214,10,.6)}
 #bl{font:400 10px var(--gm);color:var(--t3);width:min(330px,86vw);height:88px;overflow:hidden;display:flex;flex-direction:column;gap:3px;text-align:left}#bl b{color:var(--gr)}
-#jsfail{max-width:640px;margin:8vh auto;padding:22px;display:none}#jsfail h2{font:600 18px var(--gd);color:var(--ye);margin-bottom:9px}#jsfail p{color:var(--t2);font-size:12.5px;margin-bottom:8px}#jsfail code{font-family:var(--gm);color:var(--cy)}
+#fallback{max-width:720px;margin:6vh auto;padding:24px}
+#fallback h2{font:600 20px var(--gd);color:var(--ye);margin-bottom:10px}
+#fallback p{color:var(--t2);font-size:13px;margin-bottom:9px}
+#fallback code{font-family:var(--gm);color:var(--cy);font-size:12px}
+#fallback pre{background:#0C1424;border:1px solid var(--ln);padding:11px;border-radius:8px;color:var(--ye);font-size:11px;overflow-x:auto;margin:10px 0;font-family:var(--gm)}
+#fallback .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 #dr .sc{position:fixed;inset:0;z-index:90;background:rgba(2,5,10,.62);opacity:0;transition:.25s}#dr.on .sc{opacity:1}
 .dw{position:fixed;top:0;right:0;bottom:0;z-index:91;width:min(600px,100vw);background:rgba(8,13,23,.99);border-left:1px solid var(--ln2);transform:translateX(102%);transition:transform .3s cubic-bezier(.2,.8,.25,1);display:flex;flex-direction:column;box-shadow:-28px 0 70px rgba(0,0,0,.6)}
 #dr.on .dw{transform:none}.dh{padding:14px 18px 11px;border-bottom:1px solid var(--ln);flex:none;position:relative}
@@ -280,7 +281,7 @@ input[type=checkbox]{accent-color:#FFD60A}
 
 <header id="top">
 <a class="logo" href="#/bord" aria-label="MECADATA — poste de bord"><svg viewBox="0 0 512 512" aria-hidden="true"><use href="#i-logo"/></svg><span><b>MECADATA <i>//</i> EXPERT</b><small>MÉGA-BASE 2017→2027</small></span></a>
-<span class="vch">v9.1</span>
+<span class="vch">v9.2</span>
 <div class="omni" role="search"><div class="box"><svg class="ic" style="color:#61748C" aria-hidden="true"><use href="#i-search"/></svg><input id="omni" type="search" placeholder="Marque, modèle, phase, code moteur, panne, rappel, TSB, code défaut…" autocomplete="off" spellcheck="false" aria-label="Recherche prédictive" aria-controls="omnires"><kbd>/</kbd></div><div id="omnires" role="listbox" aria-label="Résultats de recherche"></div></div>
 <button class="tb" id="msearch" data-act="msearch" type="button" aria-label="Recherche"><svg class="ic"><use href="#i-search"/></svg></button>
 <button class="chip ok" id="ichip" data-act="integrity" type="button" aria-label="Intégrité de la base"><span class="dot"></span><span id="itxt">INTÈGRE</span></button>
@@ -310,7 +311,23 @@ input[type=checkbox]{accent-color:#FFD60A}
 </aside>
 <main id="view">
 <noscript><div id="noscript" class="card"><h2>JavaScript requis</h2><p>MECADATA est une console technique interactive. Activez JavaScript dans le navigateur ou la WebView Android (<code>setJavaScriptEnabled(true)</code>) puis rechargez.</p></div></noscript>
-<div id="jsfail" class="card"><h2>Moteur non démarré</h2><p>Vérifiez que <code>js/data.js</code>, <code>js/app.js</code> et <code>js/pwa.js</code> sont présents, que JavaScript et DomStorage sont activés.</p><div id="jsfail-details" class="rep"></div><button class="btn pri" type="button" onclick="location.reload()">RECHARGER</button></div>
+<div id="fallback" class="card">
+<h2>Console en attente de moteur</h2>
+<p>Le moteur ne s'est pas initialisé. Vérifiez que ces fichiers sont présents <b>à côté de index.html</b>, avec exactement ces noms :</p>
+<pre>mecadata/
+  index.html
+  manifest.webmanifest
+  sw.js
+  js/
+    data.js
+    app.js
+    pwa.js
+  icons/
+    icon.svg</pre>
+<p>Dans une WebView Android, activez <code>setJavaScriptEnabled(true)</code>, <code>setDomStorageEnabled(true)</code>, <code>setAllowFileAccess(true)</code> et chargez <code>file:///android_asset/mecadata/index.html</code>.</p>
+<div id="fbDetails" class="rep"></div>
+<div class="row"><button class="btn pri" type="button" onclick="location.reload()">RECHARGER</button><button class="btn ghost" type="button" onclick="var g=document.getElementById('gate');if(g)g.className='off';var b=document.getElementById('boot');if(b)b.className='off';">MASQUER LES OVERLAYS</button></div>
+</div>
 </main>
 </div>
 
@@ -325,20 +342,33 @@ input[type=checkbox]{accent-color:#FFD60A}
 </nav>
 
 <footer id="status"><span>LIAISONS <b id="stLinks">0</b></span><span>CORRÉLATIONS <b id="stCorr">0</b></span><span>INTÉGRITÉ <b id="stInt">100%</b></span><span>TESTS <b id="stTest">—</b></span><span>DIFFUSION <b id="stDiff">—</b></span><span>PWA <b id="stPwa">—</b></span><span id="stSize">— Ko</span><span class="dim">SYNTHÈSE INGÉNIEUR — CONFIRMER AU VIN</span></footer>
-<div id="gate"></div><div id="dr"></div><div id="md"></div><div id="ts" aria-live="polite" aria-atomic="false"></div>
+
+<div id="gate" class="off"></div><div id="dr"></div><div id="md"></div><div id="ts" aria-live="polite" aria-atomic="false"></div>
 
 <script>
 window.__MD_READY=false;window.__MD_ERR=[];window.__MD_SCRIPTS={data:false,app:false,pwa:false};
-window.onerror=function(m,s,l,c){try{window.__MD_ERR.push({msg:String(m),line:l||0,col:c||0})}catch(e){}return false};
-window.addEventListener("unhandledrejection",function(e){try{window.__MD_ERR.push({msg:"Promise: "+String(e.reason&&e.reason.message||e.reason),line:0,col:0})}catch(x){}});
+window.onerror=function(m,s,l,c){try{window.__MD_ERR.push({msg:String(m),src:String(s||""),line:l||0,col:c||0})}catch(e){}return false};
+window.addEventListener("unhandledrejection",function(e){try{window.__MD_ERR.push({msg:"Promise: "+String(e.reason&&e.reason.message||e.reason),src:"promise",line:0,col:0})}catch(x){}});
 window.__MD_LIFT=function(){var b=document.getElementById("boot");if(b)b.className="off"};
-setTimeout(function(){if(window.__MD_READY)return;window.__MD_LIFT();var f=document.getElementById("jsfail");if(!f)return;f.style.display="block";
-var d=document.getElementById("jsfail-details");if(d){var h="<b>Scripts :</b><ul>";["data","app","pwa"].forEach(function(k){h+="<li>"+k+".js : "+(window.__MD_SCRIPTS[k]?"OK":"ABSENT")+"</li>"});h+="</ul>";
-if(window.__MD_ERR.length){h+="<b>Erreurs :</b><ul>";window.__MD_ERR.slice(0,6).forEach(function(e){h+="<li class='rj'>"+String(e.msg).replace(/[<>]/g,"")+" @"+e.line+":"+e.col+"</li>"});h+="</ul>"}d.innerHTML=h}},4500);
+window.__MD_FAIL=function(){
+  try{window.__MD_LIFT()}catch(e){}
+  try{var g=document.getElementById("gate");if(g&&!window.__MD_READY)g.className="off"}catch(e){}
+  try{document.body.classList.remove("lock")}catch(e){}
+  var f=document.getElementById("fallback");if(f)f.style.display="block";
+  var d=document.getElementById("fbDetails");if(!d)return;
+  var h="<b>Scripts détectés :</b><ul>";
+  ["data","app","pwa"].forEach(function(k){h+="<li class='"+(window.__MD_SCRIPTS[k]?"ok":"rj")+"'>"+k+".js : "+(window.__MD_SCRIPTS[k]?"chargé":"ABSENT ou non compilé")+"</li>"});
+  h+="<li class='"+(window.MD_RAW?"ok":"rj")+"'>MD_RAW : "+(window.MD_RAW?"présent":"absent")+"</li></ul>";
+  if(window.__MD_ERR.length){h+="<b>Erreurs capturées :</b><ul>";window.__MD_ERR.slice(0,8).forEach(function(e){h+="<li class='rj'>"+String(e.msg).replace(/[<>]/g,"")+(e.src?" — "+String(e.src).split("/").pop():"")+" @"+e.line+":"+e.col+"</li>"});h+="</ul>"}
+  else{h+="<p class='wn'>Aucune exception capturée : un fichier est probablement absent du dossier js/ ou tronqué.</p>"}
+  d.innerHTML=h;
+};
+setTimeout(function(){if(!window.__MD_READY)window.__MD_FAIL()},4000);
+setTimeout(function(){if(!window.__MD_READY)window.__MD_FAIL()},9000);
 document.addEventListener("click",function(e){var b=e.target;while(b&&b!==document.body){if(b.id==="boot"){window.__MD_LIFT();return}b=b.parentNode}},false);
 </script>
-<script src="js/data.js"></script>
-<script src="js/app.js"></script>
-<script src="js/pwa.js"></script>
+<script src="js/data.js" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/data.js',src:'data.js',line:0,col:0})"></script>
+<script src="js/app.js" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/app.js',src:'app.js',line:0,col:0})"></script>
+<script src="js/pwa.js" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/pwa.js',src:'pwa.js',line:0,col:0})"></script>
 </body>
 </html>
