@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MECADATA — icônes PWA</title>
+<style>
+:root{--bg:#04070D;--s1:#0C1424;--ln:rgba(96,160,255,.16);--ln2:rgba(255,214,10,.42);--tx:#E6EEF9;--t2:#9FB2C8;--t3:#61748C;--ye:#FFD60A}
+*{box-sizing:border-box;margin:0;padding:0;scrollbar-width:thin;scrollbar-color:#1E7E96 #080D17}
+::-webkit-scrollbar{width:10px}::-webkit-scrollbar-track{background:#080D17}::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#1E7E96,#2A4F9E);border:2px solid #080D17;border-radius:8px}
+body{background:radial-gradient(120% 90% at 50% 0%,#0A1120,#04070D 70%);color:var(--tx);font:14px/1.5 system-ui,'Segoe UI',Roboto,sans-serif;min-height:100vh;padding:32px 22px}
+.wrap{max-width:1000px;margin:0 auto}
+.kick{font:400 10px ui-monospace,Menlo,monospace;letter-spacing:.2em;color:var(--ye);display:flex;align-items:center;gap:8px}
+.kick:before{content:"";width:22px;height:1px;background:linear-gradient(90deg,#FFF5AA,#FFD60A,#FFA800)}
+h1{font:600 clamp(22px,4vw,32px)/1.15 system-ui;margin-top:6px}
+h1 i{color:var(--ye);font-style:normal}
+p.sub{color:var(--t2);margin-top:8px;max-width:70ch}
+.grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;margin-top:26px}
+figure{margin:0;text-align:center;background:rgba(12,20,36,.7);border:1px solid var(--ln);border-radius:14px;padding:16px;position:relative}
+figure:before{content:"";position:absolute;top:0;left:14px;width:30px;height:2px;background:linear-gradient(90deg,#FFF5AA,#FFD60A,#FFA800);border-radius:2px}
+figure:hover{border-color:var(--ln2)}
+img{display:block;margin:0 auto;border-radius:14px}
+figcaption{color:var(--t3);font:400 10px ui-monospace,Menlo,monospace;margin-top:10px;letter-spacing:.06em}
+figcaption b{display:block;color:var(--tx);font-size:11px;margin-bottom:2px}
+.note{margin-top:26px;border:1px solid var(--ln2);border-radius:12px;padding:14px 16px;background:rgba(255,214,10,.06);color:var(--t2);font-size:12.5px}
+.note b{color:var(--ye)}
+code{font-family:ui-monospace,Menlo,monospace;color:#25D4EE}
+a{color:var(--ye)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<span class="kick">MECADATA // IDENTITÉ PWA</span>
+<h1>Icônes <i>éclair jaune</i></h1>
+<p class="sub">Jeux d'icônes générés par <code>node tools/build-icons.js</code> : versions standard, maskable (zone sûre 68 %), Apple Touch et favicons. Toutes dérivées du même tracé vectoriel, prêtes pour l'installation PWA et PWABuilder.</p>
+<div class="grid">
+<figure><img src="icon-512.png" width="160" height="160" alt="Icône 512"><figcaption><b>icon-512.png</b>512 × 512 · any</figcaption></figure>
+<figure><img src="icon-192.png" width="128" height="128" alt="Icône 192"><figcaption><b>icon-192.png</b>192 × 192 · any</figcaption></figure>
+<figure><img src="icon-maskable-512.png" width="128" height="128" alt="Icône maskable 512"><figcaption><b>icon-maskable-512.png</b>512 × 512 · maskable</figcaption></figure>
+<figure><img src="icon-maskable-192.png" width="96" height="96" alt="Icône maskable 192"><figcaption><b>icon-maskable-192.png</b>192 × 192 · maskable</figcaption></figure>
+<figure><img src="apple-touch-icon.png" width="96" height="96" alt="Apple touch icon"><figcaption><b>apple-touch-icon.png</b>180 × 180 · iOS</figcaption></figure>
+<figure><img src="favicon-32.png" width="32" height="32" alt="Favicon 32"><figcaption><b>favicon-32.png</b>32 × 32</figcaption></figure>
+<figure><img src="favicon-16.png" width="16" height="16" alt="Favicon 16"><figcaption><b>favicon-16.png</b>16 × 16</figcaption></figure>
+<figure><img src="icon.svg" width="128" height="128" alt="Icône vectorielle"><figcaption><b>icon.svg</b>vectoriel · any</figcaption></figure>
+</div>
+<div class="note"><b>Déploiement.</b> Placez ce dossier <code>icons/</code> à la racine du site aux côtés de <code>index.html</code>, <code>manifest.webmanifest</code> et <code>sw.js</code>, servez l'ensemble en HTTPS, puis soumettez l'URL à <a href="https://www.pwabuilder.com/" target="_blank" rel="noopener">PWABuilder</a> pour générer le paquet Android.</div>
+</div>
+</body>
+</html>
