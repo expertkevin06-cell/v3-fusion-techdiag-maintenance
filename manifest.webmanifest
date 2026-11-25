@@ -1,0 +1,29 @@
+{
+  "id": "/mecadata-expert",
+  "name": "MECADATA // INGÉNIEUR EXPERT",
+  "short_name": "MECADATA",
+  "description": "Méga-base technique automobile 2017-2027 : sélection marque/modèle/phase/motorisation, pannes connues détaillées, campagnes de rappel, TSB, plans d'entretien jusqu'à 200 000 km, accès tiers contrôlé et studio de fonds dynamiques.",
+  "lang": "fr-FR",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#04070D",
+  "theme_color": "#04070D",
+  "categories": ["utilities", "productivity", "business"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Parc 2017-2027", "short_name": "Parc", "url": "./index.html#/explorer" },
+    { "name": "Pannes · TSB · Rappels", "short_name": "Technique", "url": "./index.html#/tech" },
+    { "name": "Entretien 200 000 km", "short_name": "Entretien", "url": "./index.html#/entretien" },
+    { "name": "Autovérification", "short_name": "Tests", "url": "./index.html#/diagnostic" }
+  ]
+}
