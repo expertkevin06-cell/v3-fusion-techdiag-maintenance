@@ -1,8 +1,7 @@
-/* MECADATA pwa v19 — chargeur du méga-moteur de pannes + PWA + univers.
-   • injecte js/faults.js?v=19 (méga-base pannes / campagnes / TSB) ;
-   • network-first SW, mise à jour forcée, rechargement unique ;
-   • icônes différées pour un lancement rapide ;
-   • cases PL et MOTOS & QUADS en overlay (retour sans mot de passe). */
+/* MECADATA pwa v20 — chargeur de modules + PWA + univers séparés.
+   Chaîne : js/faults.js (méga-base pannes) → js/audit.js (corrélation réelle
+   motorisations/puissances/modèles + années de production + correction).
+   SW network-first, mise à jour forcée, icônes différées, overlay PL/MOTO. */
 (function () {
   "use strict";
   var D = document;
@@ -14,16 +13,26 @@
     if (window.requestIdleCallback) { requestIdleCallback(function () { f(); }, { timeout: ms || 2000 }); }
     else { setTimeout(f, ms || 400); }
   }
-  function loadMega() {
-    if (D.getElementById("mdmega")) { return; }
+  function note(m, src) {
+    try { window.__MD_ERR.push({ msg: m, src: src, line: 0, col: 0 }); } catch (e) {}
+  }
+  function loadScript(id, src, then) {
+    if (D.getElementById(id)) { if (then) { then(); } return; }
     var s = D.createElement("script");
-    s.id = "mdmega";
-    s.src = "js/faults.js?v=19";
+    s.id = id;
+    s.src = src;
     s.async = false;
+    s.onload = function () { if (then) { then(); } };
     s.onerror = function () {
-      try { window.__MD_ERR.push({ msg: "Chargement impossible : js/faults.js", src: "faults.js", line: 0, col: 0 }); } catch (e) {}
+      note("Chargement impossible : " + src, src);
+      if (then) { then(); }
     };
     D.body.appendChild(s);
+  }
+  function loadModules() {
+    loadScript("mdmega", "js/faults.js?v=20", function () {
+      loadScript("mdaudit", "js/audit.js?v=20", null);
+    });
   }
   function draw(c, s, mask) {
     c.clearRect(0, 0, s, s);
@@ -176,7 +185,7 @@
   function sw() {
     if (!isWeb || !("serviceWorker" in navigator)) { status(); return; }
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js?v=19", { scope: "./" }).then(function (reg) {
+      navigator.serviceWorker.register("sw.js?v=20", { scope: "./" }).then(function (reg) {
         swReg = reg;
         status();
         try { reg.update(); } catch (e) {}
@@ -325,7 +334,7 @@
   });
   window.MD_PWA = {
     icons: GEN, sizes: SIZES, generate: generate, status: status, isWeb: isWeb,
-    openUniverse: openUniverse, closeUniverse: closeUniverse, loadMega: loadMega
+    openUniverse: openUniverse, closeUniverse: closeUniverse, loadModules: loadModules
   };
   function boot() {
     standalone();
@@ -334,7 +343,7 @@
     sw();
     status();
     injectUniverses();
-    loadMega();
+    loadModules();
     idle(icons, 1200);
     setTimeout(status, 1500);
   }
