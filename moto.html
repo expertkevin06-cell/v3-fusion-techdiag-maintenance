@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#060A03">
+<title>MECADATA // MOTOS & QUADS 2018→2027</title>
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<style>
+:root{--bg:#060A03;--s1:#0E1509;--s2:#141D0C;--ln:rgba(168,230,60,.18);--ln2:rgba(168,230,60,.55);--tx:#EEF4E4;--t2:#B9C6A4;--t3:#7C8A66;--li:#A8E63C;--or:#FF6A00;--ye:#FFD60A;--rd:#FF3B30;--cy:#35C4E8;--gb:linear-gradient(135deg,#E4FF7A,#A8E63C 55%,#4C7A12);--gd:'Chakra Petch',system-ui,sans-serif;--gm:'IBM Plex Mono',ui-monospace,Menlo,monospace;--gb2:system-ui,'Segoe UI',Roboto,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0;scrollbar-width:thin;scrollbar-color:#4C7A12 #0A0F06}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:#0A0F06}::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#A8E63C,#33500C);border:2px solid #0A0F06;border-radius:8px}
+body{background:var(--bg);color:var(--tx);font:14px/1.5 var(--gb2);min-height:100vh;overflow-x:hidden}
+body.lock{overflow:hidden}a{color:var(--li);text-decoration:none}button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}input,select{font:inherit;color:var(--tx)}
+:focus-visible{outline:2px solid var(--li);outline-offset:2px}
+svg.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#mbg{position:fixed;inset:0;z-index:0;width:100%;height:100%}
+#mtop{position:fixed;top:0;left:0;right:0;height:56px;z-index:60;display:flex;align-items:center;gap:10px;padding:0 12px;background:rgba(6,10,3,.94);border-bottom:1px solid var(--ln)}
+#mtop:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:repeating-linear-gradient(90deg,var(--li) 0 22px,#0A0F06 22px 30px)}
+.back{display:inline-flex;align-items:center;gap:7px;font:600 11px var(--gd);letter-spacing:.06em;color:#0A0F06;background:var(--gb);padding:8px 12px;border-radius:9px;white-space:nowrap}
+.back:hover{filter:brightness(1.1)}
+.mlogo{display:flex;align-items:center;gap:9px;font:600 15px var(--gd)}.mlogo svg{width:30px;height:30px;color:var(--li)}.mlogo i{color:var(--li);font-style:normal}.mlogo small{display:block;font:400 8px var(--gm);color:var(--t3);letter-spacing:.16em}
+.msearch{flex:1;max-width:560px;margin:0 auto}
+.msearch input{width:100%;background:var(--s1);border:1px solid var(--ln);border-radius:9px;padding:9px 12px;outline:0;font-size:13px}
+.msearch input:focus{border-color:var(--ln2);box-shadow:0 0 0 3px rgba(168,230,60,.12)}
+.mchip{font:500 10px var(--gm);color:var(--li);border:1px solid var(--ln2);background:rgba(168,230,60,.1);padding:3px 9px;border-radius:16px;white-space:nowrap}
+#mview{position:relative;z-index:2;padding:72px 18px 70px;max-width:1500px;margin:0 auto}
+.kick{font:400 10px var(--gm);letter-spacing:.2em;color:var(--li);display:flex;align-items:center;gap:7px}.kick:before{content:"";width:22px;height:2px;background:var(--gb)}
+.hero{border:1px solid var(--ln);border-radius:16px;padding:20px;margin-bottom:14px;background:linear-gradient(120deg,rgba(168,230,60,.12),rgba(255,214,10,.05) 50%,rgba(53,196,232,.06));position:relative;overflow:hidden}
+.hero h1{font:600 clamp(20px,3.4vw,32px)/1.1 var(--gd)}.hero h1 i{color:var(--li);font-style:normal}
+.hero p{color:var(--t2);margin-top:7px;font-size:12.5px;max-width:86ch}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:14px 0}
+.kpi{border:1px solid var(--ln);border-radius:13px;padding:12px;background:rgba(14,21,9,.85);position:relative}
+.kpi:before{content:"";position:absolute;top:0;left:13px;width:30px;height:2px;background:var(--gb)}
+.kpi b{display:block;font:600 22px var(--gd);margin-top:6px;color:var(--kc,var(--li))}.kpi span{font:400 8.5px var(--gm);letter-spacing:.12em;color:var(--t3);text-transform:uppercase}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--ln);margin-bottom:12px;overflow-x:auto}
+.tab{font:500 12px var(--gd);color:var(--t3);padding:9px 13px;border-bottom:2px solid transparent;white-space:nowrap;display:flex;gap:6px;align-items:center}
+.tab.on{color:var(--li);border-bottom-color:var(--li)}.tab .n{font:400 9px var(--gm);border:1px solid var(--ln);border-radius:9px;padding:0 5px}
+.filters{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;border:1px solid var(--ln);border-radius:13px;padding:13px;background:rgba(14,21,9,.85);margin-bottom:14px}
+.lb{display:block;font:400 9px var(--gm);letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin:0 0 4px 2px}
+.sel{width:100%;background:var(--s1);border:1px solid var(--ln);border-radius:8px;padding:8px 10px;outline:0;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23A8E63C' fill='none' stroke-width='1.6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:26px}
+.sel option{background:#0E1509}
+.bar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:12px}.cnt{font:400 11px var(--gm);color:var(--li)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:11px}
+.card{border:1px solid var(--ln);border-left:3px solid var(--fc,var(--li));border-radius:12px;padding:12px;background:rgba(14,21,9,.86);cursor:pointer;transition:.16s}
+.card:hover{border-color:var(--ln2);transform:translateY(-2px);box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.card .top{display:flex;align-items:center;gap:7px;font:400 8.5px var(--gm);letter-spacing:.14em;color:var(--t3);text-transform:uppercase}
+.card h4{font:600 15px/1.2 var(--gd);margin:4px 0 2px}.card .lbl{font-size:11.5px;color:var(--t2)}
+.card .pw{display:flex;align-items:baseline;gap:6px;margin:7px 0}.card .pw b{font:600 24px var(--gd);color:var(--fc,var(--li))}.card .pw span{font:400 9.5px var(--gm);color:var(--t3)}
+.tags{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0}
+.tag{display:inline-flex;align-items:center;gap:4px;font:400 9.5px var(--gm);padding:2px 7px;border-radius:5px;border:1px solid var(--ln);color:var(--t2);background:rgba(20,29,12,.6);white-space:nowrap}
+.sev{font:600 9px var(--gm);letter-spacing:.08em;padding:2px 7px;border-radius:4px;text-transform:uppercase}
+.sev.critique{color:#FFB3BA;background:rgba(255,59,48,.16);border:1px solid rgba(255,59,48,.5)}
+.sev.majeure{color:#FFC9A8;background:rgba(255,106,0,.15);border:1px solid rgba(255,106,0,.45)}
+.sev.mode{color:#FFE0A8;background:rgba(255,214,10,.13);border:1px solid rgba(255,214,10,.4)}
+.sev.mineure{color:#BFD6FF;background:rgba(53,196,232,.14);border:1px solid rgba(53,196,232,.4)}
+.sev.info{color:#B9F1FB;background:rgba(53,196,232,.12);border:1px solid rgba(53,196,232,.4)}
+.fcard{border:1px solid var(--ln);border-left:3px solid var(--sc,var(--li));border-radius:10px;padding:11px 12px;background:rgba(14,21,9,.84);margin-bottom:9px}
+.fcard .fh{display:flex;gap:8px;align-items:flex-start}.fcard .fh b{flex:1;font-size:13px;line-height:1.3}
+.fcard p{font-size:11.5px;color:var(--t2);margin-top:5px}.fcard p b{color:var(--tx)}
+.fcard .cost{margin-top:7px;font:400 11px var(--gm);color:var(--ye)}
+.tsb{border:1px solid var(--ln);border-radius:10px;padding:11px 12px;background:rgba(14,21,9,.84);margin-bottom:9px}.tsb.rc{border-color:var(--ln2);background:rgba(168,230,60,.06)}
+.tsb .ref{font:500 10px var(--gm);color:var(--cy)}.tsb.rc .ref{color:var(--li)}.tsb b{display:block;font-size:13px;margin:3px 0 5px}.tsb p{font-size:11.5px;color:var(--t2)}
+.tsb .act{border-left:2px solid var(--cy);padding-left:9px;margin-top:7px;font-size:11.5px}.tsb.rc .act{border-left-color:var(--li)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px}
+.sp{border:1px solid var(--ln);border-radius:9px;padding:7px 10px;background:rgba(20,29,12,.4)}.sp span{font:400 8.5px var(--gm);letter-spacing:.1em;color:var(--t3);text-transform:uppercase;display:block}.sp b{font:500 12px var(--gm);display:block;margin-top:2px}.sp b.hl{color:var(--li)}
+.btn{display:inline-flex;align-items:center;gap:7px;font:500 12px var(--gd);padding:7px 12px;border-radius:9px;border:1px solid var(--ln);background:var(--s2);white-space:nowrap}
+.btn:hover{border-color:var(--ln2);color:var(--li)}.btn.pri{background:var(--gb);color:#0A0F06;border:0;font-weight:700}
+.empty{border:1px dashed var(--ln);border-radius:13px;padding:26px 16px;text-align:center;color:var(--t2)}
+#mmodal{position:fixed;inset:0;z-index:120;background:rgba(3,5,1,.72);display:none;place-items:center;padding:16px;overflow-y:auto}
+#mmodal.on{display:grid}
+.mo{width:min(760px,100%);background:rgba(10,15,6,.99);border:1px solid var(--ln2);border-radius:15px;padding:18px;box-shadow:0 28px 80px rgba(0,0,0,.7)}
+.mh{display:flex;align-items:center;gap:9px;margin-bottom:12px}.mh h3{font:600 16px var(--gd);flex:1}.mh .x{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--ln);border-radius:8px;color:var(--t2)}
+#mstatus{position:fixed;left:0;right:0;bottom:0;height:26px;z-index:55;display:flex;align-items:center;gap:16px;padding:0 12px;font:400 9.5px var(--gm);color:var(--t3);background:rgba(6,10,3,.95);border-top:1px solid var(--ln);overflow-x:auto;white-space:nowrap}
+#mstatus b{color:var(--li)}
+.race{position:absolute;right:14px;top:14px;font:600 10px var(--gm);color:var(--ye);border:1px solid rgba(255,214,10,.4);background:rgba(255,214,10,.08);padding:3px 9px;border-radius:14px}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.filters{grid-template-columns:repeat(2,1fr)}.g2{grid-template-columns:1fr}}
+@media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr}.msearch{display:none}#mview{padding:66px 10px 60px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-moto" viewBox="0 0 24 24"><circle cx="5" cy="17" r="3.4"/><circle cx="19" cy="17" r="3.4"/><path d="M5 17l3-7h5l3 4h3"/><path d="M13 10l-2-3H8"/><path d="M16 14l2-4h2"/></symbol>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20Z"/><path d="M12 10v5m0 3v.5"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 19a2 2 0 0 0 4 0"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v4h4M9 12h6M9 16h6"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"/></symbol>
+</defs></svg>
+<canvas id="mbg" aria-hidden="true"></canvas>
+<header id="mtop">
+<a class="back" href="index.html" id="mback"><svg class="ic"><use href="#i-back"/></svg>RETOUR TOURISME</a>
+<div class="mlogo"><svg class="ic" style="width:30px;height:30px"><use href="#i-moto"/></svg><span>MECADATA <i>//</i> MOTOS & QUADS<small>MÉGA-BASE 2018→2027</small></span></div>
+<div class="msearch"><input id="mq" type="search" placeholder="Recherche massive : marque, modèle, moteur, panne, rappel, TSB…" autocomplete="off"></div>
+<span class="mchip">UNIVERS MOTO SÉPARÉ</span>
+</header>
+<main id="mview"></main>
+<footer id="mstatus"><span>MARQUES <b id="stB">0</b></span><span>MODÈLES <b id="stM">0</b></span><span>MOTORISATIONS <b id="stE">0</b></span><span>PANNES <b id="stF">0</b></span><span>RAPPELS/TSB <b id="stT">0</b></span><span>SYNTHÈSE INGÉNIEUR MOTO — CONFIRMER AU VIN</span></footer>
+<div id="mmodal"><div class="mo"><div class="mh"><h3 id="mmTitle">Détail</h3><button class="x" id="mmClose" type="button"><svg class="ic"><use href="#i-x"/></svg></button></div><div id="mmBody"></div></div></div>
+
+<script>
+/* ══════════ MECADATA // MOTOS & QUADS — moteur autonome ══════════ */
+(function () {
+  "use strict";
+  var D = document;
+  function $(s) { return D.querySelector(s); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function num(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
+  function fmt(n) { n = num(n, 0); try { return n.toLocaleString("fr-FR"); } catch (e) { return String(n); } }
+  function nk(s) { return String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, ""); }
+  function slug(s) { return nk(s).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "x"; }
+  function arr(v) { return Array.isArray(v) ? v : []; }
+  function list(v) { return Array.isArray(v) ? v.filter(Boolean) : String(v == null ? "" : v).split(/[;,|]/).map(function (s) { return s.trim(); }).filter(Boolean); }
+  function pair(v, d) { var a = arr(v); return [num(a[0], d[0]), num(a[1], d[1])]; }
+  function kmOf(f) { var p = pair(f && f.km, [0, 200000]); return p[0] > p[1] ? [p[1], p[0]] : p; }
+  function yOf(f) { var p = pair(f && f.y, [2018, 2027]); return p[0] > p[1] ? [p[1], p[0]] : p; }
+
+  var REG = { france: "France", europe: "Europe", asie: "Asie", chine: "Chine", amerique: "Amérique" };
+  var SEGS = ["Cross/Enduro", "Trail/TT", "Roadster", "Sportive", "Scooter", "Quad/SSV", "Électrique", "Custom"];
+  var SV = { critique: { w: 32, c: "#FF3B30" }, majeure: { w: 18, c: "#FF6A00" }, "modérée": { w: 9, c: "#FFD60A" }, mineure: { w: 4, c: "#35C4E8" }, info: { w: 0, c: "#A8E63C" } };
+  var FQ = { "élevée": 1.25, moyenne: 1, faible: 0.7 };
+  function nsev(v) { var k = nk(v), m = { critique: "critique", majeure: "majeure", moderee: "modérée", mineure: "mineure", info: "info" }; return m[k] || (SV[v] ? v : "modérée"); }
+  function nfreq(v) { var k = nk(v), m = { elevee: "élevée", moyenne: "moyenne", faible: "faible" }; return m[k] || (FQ[v] ? v : "moyenne"); }
+
+  /* id|nom|pays|groupe|région */
+  var MB = [
+    ["sherco", "Sherco", "France", "Sherco", "france"], ["em", "Electric Motion", "France", "EM", "france"],
+    ["voxan", "Voxan", "France", "Venturi", "france"], ["mash", "Mash", "France", "SIMA", "france"],
+    ["peugeotmot", "Peugeot Motocycles", "France", "Mahindra", "france"], ["scorpa", "Scorpa", "France", "Scorpa", "france"],
+    ["ktm", "KTM", "Autriche", "Pierer Mobility", "europe"], ["husqvarna", "Husqvarna", "Suède", "Pierer Mobility", "europe"],
+    ["gasgas", "GasGas", "Espagne", "Pierer Mobility", "europe"], ["beta", "Beta", "Italie", "Beta", "europe"],
+    ["fantic", "Fantic", "Italie", "Fantic", "europe"], ["tm", "TM Racing", "Autriche", "TM", "europe"],
+    ["ducati", "Ducati", "Italie", "VW Group", "europe"], ["aprilia", "Aprilia", "Italie", "Piaggio", "europe"],
+    ["mvagusta", "MV Agusta", "Italie", "MV Agusta", "europe"], ["benelli", "Benelli", "Italie", "Qianjiang", "europe"],
+    ["piaggio", "Piaggio / Vespa", "Italie", "Piaggio", "europe"], ["triumph", "Triumph", "Royaume-Uni", "Triumph", "europe"],
+    ["bmwm", "BMW Motorrad", "Allemagne", "BMW Group", "europe"], ["royalenfield", "Royal Enfield", "Inde / UK", "Eicher", "asie"],
+    ["honda", "Honda", "Japon", "Honda", "asie"], ["yamaha", "Yamaha", "Japon", "Yamaha", "asie"],
+    ["suzuki", "Suzuki", "Japon", "Suzuki", "asie"], ["kawasaki", "Kawasaki", "Japon", "KHI", "asie"],
+    ["kymco", "Kymco", "Taïwan", "Kymco", "asie"], ["sym", "SYM", "Taïwan", "SYM", "asie"],
+    ["tvs", "TVS", "Inde", "TVS", "asie"], ["bajaj", "Bajaj", "Inde", "Bajaj", "asie"],
+    ["cfmoto", "CFMoto", "Chine", "CFMoto", "chine"], ["zongshen", "Zongshen", "Chine", "Zongshen", "chine"],
+    ["loncin", "Loncin / Voge", "Chine", "Loncin", "chine"], ["qjmotor", "QJMotor", "Chine", "Qianjiang", "chine"],
+    ["zontes", "Zontes", "Chine", "Taurom", "chine"], ["segway", "Segway Powersports", "Chine / US", "Ninebot", "chine"],
+    ["harley", "Harley-Davidson", "États-Unis", "H-D", "amerique"], ["indian", "Indian", "États-Unis", "Polaris", "amerique"],
+    ["zero", "Zero Motorcycles", "États-Unis", "Zero", "amerique"], ["livewire", "LiveWire", "États-Unis", "LiveWire", "amerique"],
+    ["polaris", "Polaris", "États-Unis", "Polaris", "amerique"], ["canam", "Can-Am", "Canada", "BRP", "amerique"]
+  ];
+  /* modèle|année0|année1|segment|phase */
+  var MM = {
+    sherco: "SE-R 300^2018^2027^0^4|SE-F 450^2018^2027^0^4|SC-R 125^2019^2027^0^3",
+    em: "E-Motion 1.5^2018^2024^6^2|Postale^2020^2027^6^2|Cross 2025^2025^2027^6^3",
+    voxan: "Wattman^2020^2027^6^2",
+    mash: "X-Ride 650^2018^2027^1^3|Dirt Track 650^2019^2027^7^2|Five Hundred^2018^2027^2^3",
+    peugeotmot: "Django 125^2018^2027^4^3|Speedfight 4^2018^2024^4^4|Metropolis 400^2018^2027^4^3",
+    scorpa: "SY 250^2018^2027^0^3|T-Ride 300^2019^2027^1^2",
+    ktm: "EXC 300^2018^2027^0^5|EXC-F 450^2018^2027^0^5|SX 125^2018^2027^0^4|390 Duke^2018^2027^2^4|890 Adventure^2021^2027^1^3|1290 Super Duke R^2018^2027^3^4|Freeride E-XC^2018^2024^6^2|690 Enduro R^2018^2024^1^3",
+    husqvarna: "TE 300^2018^2027^0^5|FE 501^2018^2027^0^4|TC 125^2018^2027^0^4|Svartpilen 401^2018^2027^2^3|Norden 901^2022^2027^1^2",
+    gasgas: "EC 300^2021^2027^0^3|MC 250^2021^2027^0^3|ES 700^2022^2027^1^2",
+    beta: "RR 300^2018^2027^0^5|RR 480^2018^2027^0^4|X-Pro 125^2019^2027^0^3|Alp 200^2021^2027^1^2",
+    fantic: "XE 300^2021^2027^0^2|XX 250^2021^2027^0^2|Caballero 700^2021^2027^1^2",
+    tm: "EN 300^2018^2027^0^4|MX 250^2018^2027^0^4",
+    ducati: "Monster 937^2021^2027^2^2|Panigale V4^2018^2027^3^4|Scrambler 800^2018^2027^7^3|Multistrada V4^2021^2027^1^3",
+    aprilia: "RS 660^2020^2027^3^2|Tuono 660^2021^2027^2^2|SR GT 200^2022^2027^4^1|RX 125^2018^2024^0^2",
+    mvagusta: "Brutale 800^2018^2027^2^4|F3 800^2018^2024^3^3|Superveloce^2020^2027^3^2",
+    benelli: "TRK 502^2018^2027^1^4|Leoncino 500^2018^2027^7^3|TNT 125^2018^2027^2^2",
+    piaggio: "Vespa GTS 300^2018^2027^4^4|Beverly 400^2021^2027^4^2|Liberty 125^2018^2027^4^3",
+    triumph: "Speed 400^2023^2027^2^1|Trident 660^2021^2027^2^2|Street Triple 765^2018^2027^2^4|Tiger 900^2020^2027^1^3|Bonneville T120^2018^2027^7^4|Rocket 3^2019^2027^7^2",
+    bmwm: "R 1250 GS^2018^2024^1^3|R 1300 GS^2023^2027^1^4|S 1000 RR^2019^2027^3^3|F 900 R^2020^2027^2^2|CE 04^2022^2027^6^1",
+    royalenfield: "Himalayan 450^2023^2027^1^1|Classic 350^2018^2027^7^3|Interceptor 650^2018^2027^7^3|Scram 411^2022^2027^1^1",
+    honda: "CRF 450R^2018^2027^0^5|CRF 250R^2018^2027^0^5|Africa Twin 1100^2020^2027^1^3|CB 650 R^2019^2027^2^3|PCX 125^2018^2027^4^3|Forza 750^2021^2027^4^2|CBR 1000 RR^2018^2027^3^4|EM1 e:^2023^2027^6^1",
+    yamaha: "YZ 250^2018^2027^0^5|YZ 450F^2018^2027^0^5|WR 250F^2018^2027^0^4|Ténéré 700^2019^2027^1^3|MT-07^2018^2027^2^4|MT-09^2018^2027^2^4|NMAX 125^2018^2027^4^3|TMAX 560^2020^2027^4^3|R7^2022^2027^3^1",
+    suzuki: "RM-Z 450^2018^2027^0^4|DR-Z 400^2018^2027^1^3|V-Strom 800^2023^2027^1^1|GSX-S 1000^2018^2027^2^4|Address 110^2018^2027^4^3|Burgman 400^2018^2027^4^3",
+    kawasaki: "KX 450^2019^2027^0^4|KX 250^2019^2027^0^4|KLX 300^2020^2027^1^2|Z900^2018^2027^2^4|Ninja 650^2018^2027^3^3|Versys 650^2018^2027^1^3",
+    kymco: "Agility 125^2018^2027^4^3|X-Town 300^2018^2024^4^2|AK 550^2018^2027^4^2",
+    sym: "Symphony 125^2018^2027^4^3|Cruisym 300^2018^2027^4^2|Husky 125^2020^2027^1^2",
+    tvs: "Apache RR 310^2018^2027^3^3|Ntorq 125^2018^2027^4^3",
+    bajaj: "Dominar 400^2018^2027^2^3|Pulsar NS200^2018^2027^2^3",
+    cfmoto: "800MT^2021^2027^1^2|650GT^2019^2027^2^3|450SR^2022^2027^3^1|CForce 625^2019^2027^5^3|Zeeho AE8^2021^2027^6^2",
+    zongshen: "Cyclone RX4^2018^2027^1^3|RT3 250^2019^2027^4^2",
+    loncin: "Voge 650 DS^2019^2027^1^3|Voge 900 RR^2023^2027^3^1|SR4 350^2021^2027^4^2",
+    qjmotor: "SRK 700^2021^2027^2^2|SRT 700^2021^2027^1^2|SRV 550^2022^2027^7^1",
+    zontes: "350T^2021^2027^1^2|703RR^2023^2027^3^1",
+    segway: "AT6 Snarler^2021^2027^5^2|UT10 Crew^2022^2027^5^1|E-bike Xyber^2023^2027^6^1",
+    harley: "Sportster S^2021^2027^7^1|Pan America 1250^2021^2027^1^2|Street Bob 114^2018^2027^7^4|LiveWire S2^2024^2027^6^1",
+    indian: "Scout Bobber^2018^2027^7^4|Challenger^2020^2027^7^2|FTR 1200^2019^2024^2^2",
+    zero: "SR/F^2019^2027^6^3|DSR/X^2022^2027^6^2|FXE^2021^2027^6^2",
+    livewire: "S2 Alpinista^2024^2027^6^1|S2 Del Mar^2024^2027^6^1",
+    polaris: "Sportsman 570^2018^2027^5^4|Sportsman 850^2018^2027^5^4|RZR Pro R^2022^2027^5^2|Scrambler XP^2020^2027^5^2",
+    canam: "Outlander 700^2018^2027^5^4|Outlander 1000R^2022^2027^5^2|Maverick R^2022^2027^5^2|Renegade 650^2018^2027^5^3"
+  };
+  /* code|type|cyl|libellé|ch:Nm,...|boîte|a0|a1|marques|segments */
+  var ME = [
+    "T125|2T|125|125 2T|35:20,40:22|6v|2018|2027|ktm;husqvarna;gasgas;beta;tm;sherco;aprilia|0",
+    "T250|2T|250|250 2T|45:26,50:28|6v|2018|2027|ktm;husqvarna;gasgas;beta;tm;sherco;yamaha;kawasaki|0",
+    "T300|2T|300|300 2T|50:30,55:32|6v|2018|2027|ktm;husqvarna;gasgas;beta;tm;sherco;scorpa|0;1",
+    "F450|4T|450|450 4T|55:35,60:38|6v|2018|2027|ktm;husqvarna;sherco;beta;honda;yamaha;suzuki;kawasaki|0",
+    "F250|4T|250|250 4T|40:26,44:28|6v|2018|2027|ktm;husqvarna;honda;yamaha;kawasaki;fantic|0",
+    "F500|4T|500|500 4T|58:40,62:42|6v|2018|2027|husqvarna;beta;gasgas|0;1",
+    "MONO4|4T|350|Mono 350|30:28,34:30|6v|2018|2027|royalenfield;kawasaki|honda|1;2",
+    "TWIN7|4T|700|Bicylindre 700|70:68,75:73|6v|2018|2027|yamaha;honda;bmwm;triumph|1;2",
+    "TWIN9|4T|900|Bicylindre 900|95:87,105:93|6v|2019|2027|triumph;ducati;bmwm;ktm|1;2;3",
+    "TWIN12|4T|1200|Bicylindre 1200|90:100,100:105|6v|2018|2027|royalenfield;harley|7",
+    "V2_8|4T|800|V2 800|73:67,80:70|6v|2018|2027|ducati;benelli|mash|2;7",
+    "V4_11|4T|1100|V4 1100|200:124,215:126|6v|2018|2027|ducati;aprilia;mvagusta|3",
+    "I3_7|4T|765|3-cyl 765|120:79,130:80|6v|2018|2027|triumph|2;3",
+    "I4_6|4T|650|4-cyl 650|75:67,95:64|6v|2018|2027|kawasaki;honda;suzuki|2;3",
+    "I4_10|4T|1000|4-cyl 1000|150:105,200:113|6v|2018|2027|honda;yamaha;kawasaki;suzuki;bmwm|3",
+    "SC125|4T|125|Scooter 125|12:12,15:13|CVT|2018|2027|honda;yamaha;piaggio;kymco;sym;peugeotmot|4",
+    "SC300|4T|300|Scooter 300-400|26:26,34:35|CVT|2018|2027|piaggio;kymco;sym;bmwm;yamaha|4",
+    "SC560|4T|560|Maxi-scooter 560|47:55|CVT|2018|2027|yamaha;kymco|4",
+    "EV10|e|0|Électrique 10 kW|14:40,18:45|Auto|2018|2027|em;voxan;zero;livewire;bmwm;honda;segway|6;4",
+    "EV40|e|0|Électrique 40 kW|54:90,66:105|Auto|2019|2027|zero;livewire;bmwm;ktm;segway|6;2",
+    "EV80|e|0|Électrique 80 kW|110:190,123:225|Auto|2019|2027|zero;livewire;harley|6;3",
+    "Q570|4T|570|Quad 570|44:51|CVT|2018|2027|polaris;canam;cfmoto;segway|5",
+    "Q850|4T|850|Quad 850|78:73|CVT|2018|2027|polaris;canam|5",
+    "Q1000|4T|1000|Quad/SSV 1000|90:88,101:93|CVT|2018|2027|polaris;canam;cfmoto|5",
+    "SSV18|4T|1800|SSV Turbo 1800|220:225|DCT|2022|2027|polaris;canam|5",
+    "TR450|4T|450|Trail 450|42:38|6v|2018|2027|suzuki;kawasaki;honda|1",
+    "TR700|4T|700|Trail 700-800|75:77,80:82|6v|2018|2027|yamaha;honda;cfmoto;loncin|1",
+    "TR1300|4T|1300|Trail 1300|136:143,145:149|6v|2018|2027|bmwm;ducati;ktm|1",
+    "RD400|4T|400|Roadster 400|40:37,45:40|6v|2021|2027|triumph;ktm;royalenfield|2",
+    "RD660|4T|660|Roadster 660-765|95:67,105:73|6v|2018|2027|aprilia;yamaha;kawasaki|2",
+    "RD900|4T|900|Roadster 900|120:87,125:90|6v|2018|2027|triumph;kawasaki;ducati|2",
+    "SP300|4T|300|Sportive 300|39:27|6v|2018|2027|kawasaki;yamaha;cfmoto|3",
+    "SP600|4T|600|Sportive 600|120:65,130:68|6v|2018|2027|honda;yamaha;kawasaki;suzuki|3",
+    "CU350|4T|350|Custom 350|20:27|5v|2018|2027|royalenfield|7",
+    "CU650|4T|650|Custom 650|47:52|6v|2018|2027|royalenfield;benelli|7",
+    "CU1250|4T|1250|Custom 1250 V2|94:100,105:108|6v|2018|2027|harley;indian|7"
+  ];
+  /* titre|familles|modèles|phases|sev|freq|a0|a1|km0|km1|symptômes|cause|action|c0|c1|statut|domaine */
+  var MF = [
+    "Power valve 2T grippé|T125;T250;T300|EXC 300;TE 300;EC 300;RR 300;XE 300;YZ 250;KX 250|3;4;5|critique|moyenne|2018|2027|5000|60000|Perte puissance mi-régime;Vanne bloquée;Fumée anormale|Calamine et gomme de carburant bloquant la vanne d'échappement.|Démontage, nettoyage vanne et câble/actuator, graissage spec, contrôle échappement.|120|600|Surveillance|Moteur",
+    "Segmentation 2T usure rapide|T125;T250;T300|EXC 300;TC 125;YZ 250;KX 250;RR 300|2;3;4|majeure|élevée|2018|2027|20000|120000|Compression basse;Fumée bleue;Démarrage difficile|Usure segments/cylindre inhérente au 2T sollicité.|Mesure compression, remplacement segments ou kit cylindre/piston.|250|1200|Note entretien|Moteur",
+    "Chaîne de distribution 4T tendeur|F450;F250;F500;TR450|CRF 450R;YZ 450F;RM-Z 450;KX 450;EXC-F 450|3;4;5|critique|moyenne|2018|2027|30000|150000|Claquement haut moteur;Casse chaîne;Calage|Tendeur hydraulique fatigué et patins usés en compétition.|Kit chaîne distribution + tendeur + patins, contrôle calage.|400|1500|Surveillance|Distribution",
+    "Soupapes titane contrôle jeu|F450;F250;F500|CRF 450R;YZ 450F;KX 450;EXC-F 450;SE-F 450|3;4;5|majeure|élevée|2018|2027|20000|100000|Perte compression;Ratés;Bruit soupapes|Jeux de soupapes hors cote sur culasse 4T performante.|Contrôle jeu soupapes toutes 20-30 h, remplacement soupapes/sièges si hors cote.|200|1400|Note entretien|Moteur",
+    "Carburateur gicleurs encrassés|T125;T250;T300;SC125|YZ 250;KX 250;EXC 300;Agility 125|2;3;4|modérée|élevée|2018|2027|5000|60000|Ralenti instable;Trous à l'accélération|Gicleurs et pointeau encrassés par carburant vieux.|Nettoyage complet carburateur, gicleurs, pointeau, carburant frais.|80|350|Note entretien|Carburant",
+    "Injection EFI pompe basse pression|TWIN7;TWIN9;I4_6;I4_10;RD660|Ténéré 700;MT-07;Z900;CB 650 R;Street Triple 765|2;3;4|majeure|moyenne|2018|2027|30000|150000|Démarrage difficile;Perte puissance;Voyant moteur|Pompe carburante et crépine fatiguées.|Remplacement pompe + filtre, contrôle pression rail, effacement défauts.|250|900|Surveillance|Carburant",
+    "Embrayage bain d'huile patinage|F450;T250;T300;I4_10;V4_11|CRF 450R;YZ 250;KX 450;CBR 1000 RR;Panigale V4|3;4;5|majeure|élevée|2018|2027|10000|80000|Patinage;Odeur brûlé;Passages difficiles|Disques et ressorts usés par démarrages et compétition.|Kit disques + ressorts, contrôle cloche et noix, huile spec.|200|900|Note entretien|Transmission",
+    "Boîte vitesses fourches usées|T250;T300;F450;I4_10|YZ 250;KX 450;EXC 300;CBR 1000 RR|3;4;5|majeure|faible|2018|2027|40000|200000|Vitesses qui sautent;Point mort difficile|Fourches et tambour usés en usage compétition.|Remplacement fourches + tambour, contrôle pignons.|600|2500|Surveillance|Transmission",
+    "CVT scooter courroie galets|SC125;SC300;SC560|PCX 125;NMAX 125;Django 125;X-Town 300;TMAX 560|2;3;4|modérée|élevée|2018|2027|8000|40000|Perte reprise;Bruit variateur;Patine|Courroie et galets usés en urbain.|Courroie + galets + joint spi variateur, nettoyage.|80|400|Note entretien|Transmission",
+    "CVT quad courroie surchauffe|Q570;Q850;Q1000|Sportsman 570;Sportsman 850;Outlander 700;CForce 625|3;4|critique|moyenne|2018|2027|5000|60000|Perte propulsion;Odeur brûlé;Voyant température|Courroie détruite en usage boue/charge.|Courroie spec, nettoyage variateur, contrôle ventilation et galets.|150|700|Surveillance|Transmission",
+    "Transmission cardan fuite|TWIN12;TR1300;CU1250|R 1250 GS;R 1300 GS;Street Bob 114;Scout Bobber|2;3;4|modérée|faible|2018|2027|40000|200000|Fuite huile cardan;Vibrations|Joint spi de cardan et huile pont fatigués.|Remplacement spi + vidange pont, contrôle croisillons.|150|700|Surveillance|Transmission",
+    "Fourche avant joints spi|T125;T250;T300;F450;TR700;RD660|EXC 300;YZ 250;CRF 450R;Ténéré 700;MT-07|2;3;4;5|modérée|élevée|2018|2027|10000|80000|Fuite huile fourche;Plongement irrégulier|Joints spi et bagues usés par boue et lavages.|Kit joints spi + caches, vidange huile fourche, contrôle bagues.|100|500|Note entretien|Suspension",
+    "Amortisseur arrière fuite|T250;T300;F450;TR1300|EXC 300;YZ 450F;CRF 450R;R 1300 GS|3;4;5|modérée|moyenne|2018|2027|20000|120000|Perte rebond;Fuite huile;Assiette basse|Joint d'amortisseur fatigué en usage TT.|Réfection amortisseur ou remplacement, contrôle biellettes.|200|1200|Surveillance|Suspension",
+    "Biellettes suspension corrosion|F450;TR700;Q570;Q850|CRF 450R;Ténéré 700;Sportsman 570|3;4;5|modérée|moyenne|2018|2027|15000|100000|Jeu arrière;Claquement;Usure pneus|Biellettes et roulements corrodés par boue/lavage.|Remplacement biellettes + roulements, graissage.|120|600|Surveillance|Suspension",
+    "Freins plaquettes disques usure|*|EXC 300;YZ 250;CRF 450R;MT-07;Z900;PCX 125;Django 125;Sportsman 570;R 1300 GS;Panigale V4|1;2;3;4;5|majeure|élevée|2018|2027|3000|30000|Levier mou;Distance allongée;Bruit|Plaquettes et disques usés, eau/boue en TT.|Plaquettes + disques si cote, purge liquide DOT4, graissage axes.|80|450|Note entretien|Freinage",
+    "Maître-cylindre frein fuite|I4_10;V4_11;TR1300|CBR 1000 RR;Panigale V4;R 1300 GS|3;4;5|critique|faible|2018|2027|40000|200000|Levier au guidon;Perte freinage avant|Joint de maître-cylindre fatigué.|Kit réparation maître-cylindre, purge complète, test pression.|150|700|Surveillance|Freinage",
+    "Batterie 12V sulfate stockage|*|EXC 300;YZ 250;MT-07;PCX 125;Ténéré 700;Sportsman 570;Scout Bobber|1;2;3;4;5|modérée|élevée|2018|2027|10000|60000|Démarrage difficile;Tension basse|Sulfatation par hivernage sans maintien.|Batterie neuve ou recharge intelligente, contrôle alternateur/redresseur.|60|300|Note entretien|Électronique",
+    "Redresseur régulateur HS|TWIN7;I3_7;CU350|Ténéré 700;Street Triple 765;Classic 350;Himalayan 450|1;2;3|critique|moyenne|2018|2027|30000|150000|Surtension;Ampoule grillée;Batterie qui cuit|Régulateur/redresseur défaillant sur alternateurs mono/bi.|Remplacement redresseur-régulateur, contrôle faisceau et tension charge.|150|600|Surveillance|Électronique",
+    "Faisceau capteur TPS défaillant|I4_6;I4_10;RD660|Z900;CB 650 R;MT-07;MT-09;R7|2;3|modérée|moyenne|2018|2027|20000|120000|Ralenti erratique;Voyant moteur;À-coups|Capteur TPS et connecteurs oxydés.|Contrôle/calibration TPS, nettoyage connecteurs, mise à jour ECU.|100|500|Surveillance|Électronique",
+    "BMS batterie HV équilibrage|EV10;EV40;EV80|SR/F;DSR/X;CE 04;EM1 e;S2 Alpinista;Wattman|1;2;3|modérée|moyenne|2019|2027|10000|100000|Autonomie réduite;Charge lente;Puissance bridée|Déséquilibre cellules et calibration BMS.|Bilan SOH, équilibrage modules, mise à jour BMS, contrôle thermique.|0|3000|Surveillance|Batterie HV",
+    "Moteur électrique thermique|EV40;EV80|SR/F;S2 Del Mar;LiveWire S2|2;3|modérée|faible|2019|2027|20000|150000|Puissance bridée;Alarme température|Refroidissement moteur/contrôleur sollicité.|Contrôle circuit refroidissement, radiateur, pompe, mise à jour courbe.|300|1800|Surveillance|Refroidissement",
+    "Rayons roues desserrés TT|T125;T250;T300;F450;TR450|EXC 300;YZ 250F;CRF 450R;RM-Z 450|3;4;5|majeure|élevée|2018|2027|2000|30000|Voile roue;Rayons cassés;Vibrations|Rayons desserrés après chocs et lavages haute pression.|Contrôle tension rayons régulier, dévoilage, remplacement rayons cassés.|60|400|Note entretien|Châssis",
+    "Roulements roue eau/boue|T250;T300;F450;Q570;Q850|YZ 250;EXC 300;CRF 450R;Sportsman 570|3;4;5|modérée|élevée|2018|2027|5000|60000|Jeu roue;Bruit rotation;Grippage|Roulements non étanches après lavages/boue.|Remplacement roulements + joints spi, graissage étanche.|80|400|Note entretien|Châssis",
+    "Cadre fissure soudures|T300;F450;SSV18|EXC 300;CRF 450R;RZR Pro R|3;4;5|critique|faible|2018|2027|30000|200000|Fissure berceau;Craquement;Jeu anormal|Fatigue soudures en usage compétition/SSV.|Contrôle magnétoscopique, réparation constructeur ou renfort cadre.|400|2500|Surveillance renforcée|Châssis",
+    "Guidon potences jeu|T250;T300;F450|YZ 250;EXC 300;CRF 450R|3;4;5|modérée|moyenne|2018|2027|10000|80000|Jeu direction;Claquement avants|Rotule de direction et potences marquées par chocs.|Remplacement rotule + contrôle potences, couple spec.|100|500|Surveillance|Direction",
+    "Pneus TT usure/crevaison|*|EXC 300;YZ 250;CRF 450R;Ténéré 700;Sportsman 850|RZR Pro R|1;2;3;4;5|mineure|élevée|2018|2027|1000|15000|Usure rapide;Crevaison;Perte grip|Gomme tendre et terrain abrasif.|Contrôle pression/état avant sortie, remplacement pneus, mousse si compétition.|60|350|Note entretien|Pneumatiques",
+    "Quad différentiel blocage|Q570;Q850;Q1000;SSV18|Sportsman 570;Outlander 700;CForce 625;Renegade 650|3;4;5|modérée|moyenne|2018|2027|10000|80000|4x4 ne engage;Bruit différentiel|Actuateur et crabots de différentiel encrassés.|Nettoyage/ remplacement actuateur 4x4, vidange différentiel.|150|900|Surveillance|Transmission",
+    "SSV embrayage primaire poussière|SSV18;Q1000|RZR Pro R;Maverick R;Outlander 1000R|2;3|critique|moyenne|2020|2027|5000|50000|Perte transmission;Bruit;Surchauffe|Poussière d'embrayage et courroie détruite en dune/boue.|Nettoyage carter embrayage, courroie spec, contrôle ventilation.|200|1200|Surveillance|Transmission",
+    "Échappement 2T silencieux bourré|T250;T300|YZ 250;KX 250;EXC 300;TE 300|3;4;5|modérée|élevée|2018|2027|5000|50000|Perte puissance;Sonde?;Fumée|Calamine et bourrage laine du silencieux.|Décalaminage détente + silencieux, remplacement laine si nécessaire.|80|400|Note entretien|Échappement",
+    "Décalaminage 4T admission|I4_10;V4_11;TWIN9|CBR 1000 RR;Panigale V4;Street Triple 765|3;4|modérée|moyenne|2018|2027|20000|120000|Ralenti instable;Perte haut régime|Calamine soupapes/admission injection directe ou riche.|Décalaminage admission, contrôle injecteurs, bougies.|150|700|Surveillance|Moteur",
+    "Refroidissement radiateur boue|Q570;Q850;SSV18;TR450|Sportsman 570;Outlander 700;RZR Pro R;DR-Z 400|3;4;5|majeure|moyenne|2018|2027|5000|60000|Surchauffe;Voyant température;Perte puissance|Radiateur colmaté boue/herbe.|Nettoyage radiateur, contrôle ventilateur et durites, purge LDR.|100|600|Surveillance|Refroidissement",
+    "Pompe à eau joint carbone|I4_10;V4_11;TWIN9|CBR 1000 RR;Panigale V4;Multistrada V4|3;4|modérée|moyenne|2018|2027|40000|200000|Fuite LDR;Suintement weep hole|Joint carbone pompe à eau fatigué.|Kit joint pompe à eau ou pompe complète, purge circuit.|150|800|Surveillance|Refroidissement",
+    "Capteur béquille/antidémarrage|SC125;SC300;RD400;RD660|PCX 125;Django 125;Speed 400;MT-07|2;3;4|mineure|moyenne|2018|2027|10000|80000|Démarrage refusé;Voyant béquille|Capteur béquille latérale oxydé ou déréglé.|Nettoyage/réglage/remplacement capteur, contrôle connectique.|50|250|Surveillance|Électronique",
+    "Compteur infiltration eau|Q570;Q850;TR450;SC300|Sportsman 570;Outlander 700;DR-Z 400;X-Town 300|3;4|mineure|moyenne|2018|2027|10000|80000|Brouillard écran;Segments éteints|Étanchéité compteur insuffisante en lavage/boue.|Séchage, joint d'étanchéité ou remplacement compteur.|80|500|Surveillance|Électronique",
+    "Réservoir corrosion interne|CU350;CU650;TR450|Classic 350;Interceptor 650;Himalayan 450;DR-Z 400|1;2;3|modérée|faible|2018|2027|40000|200000|Rouille dans filtre;Ratés;Fuite|Condensation et carburant stocké dans réservoir acier.|Nettoyage réservoir, traitement interne, filtre à carburant.|150|700|Surveillance|Carburant",
+    "Durites carburant poreuses|SC125;CU350;MONO4|PCX 125;Django 125;Classic 350;Himalayan 450|2;3;4|modérée|moyenne|2018|2027|30000|150000|Odeur essence;Suintement|Durites vieillissantes et colliers fatigués.|Remplacement durites + colliers spec carburant.|60|300|Note entretien|Carburant",
+    "Embrayage centrifuge scooter|SC125;SC300|PCX 125;NMAX 125;Agility 125;Symphony 125|2;3;4|modérée|élevée|2018|2027|10000|60000|Patine;À-coups démarrage;Perte reprise|Masselottes et cloche glacées.|Nettoyage cloche, remplacement masselottes/ressorts, courroie.|80|400|Note entretien|Transmission",
+    "Quad rotules direction usure|Q570;Q850;Q1000;SSV18|Sportsman 850;Outlander 700;CForce 625;Renegade 650|3;4;5|majeure|élevée|2018|2027|10000|80000|Jeu direction;Claquement;Usure pneus|Rotules et biellettes soumises à chocs et boue.|Remplacement rotules/biellettes, géométrie, graissage.|150|800|Surveillance|Direction",
+    "Moto électrique connecteur charge|EV10;EV40;EV80|SR/F;CE 04;EM1 e;S2 Alpinista;Wattman|1;2;3|modérée|moyenne|2019|2027|5000|60000|Charge interrompue;Connecteur chaud|Connecteur et broches oxydés par intempéries.|Nettoyage/broches, contrôle étanchéité, mise à jour logiciel charge.|100|800|Surveillance|Charge"
+  ];
+  /* ref|marques|familles|modèles|phases|titre|date|cat|sev|résumé|action|domaine */
+  var MT = [
+    "RPL-KTM-2021-FUEL|ktm;husqvarna;gasgas|F450;F250;T300|EXC 300;EXC-F 450;FE 501;EC 300|3;4;5|RAPPEL pompe à carburant KTM|2021-06|Rappel|critique|Fuite possible de la pompe à carburant sur lots 2020-2021.|Remplacement pompe + durites, contrôle étanchéité, VIN.|Carburant",
+    "RPL-HON-2020-CRF|honda|F450;F250|CRF 450R;CRF 250R|4;5|RAPPEL cadre CRF fissure|2020-09|Rappel|critique|Fissure de cadre possible sur CRF 2019-2020.|Contrôle cadre, remplacement si fissure, prise en charge.|Châssis",
+    "RPL-YAM-2019-YZ|yamaha|T250;F450|YZ 250;YZ 450F|4;5|RAPPEL embrayage YZ|2019-05|Rappel|majeure|Panier d'embrayage pouvant casser.|Remplacement panier + disques, contrôle noix.|Transmission",
+    "RPL-KAW-2022-KX|kawasaki|F450;T250|KX 450;KX 250|4;5|RAPPEL durite frein avant|2022-03|Rappel|critique|Durite frein avant pouvant fuir.|Remplacement durite + purge, test freinage.|Freinage",
+    "RPL-POL-2021-FIRE|polaris|Q850;Q1000;SSV18|Sportsman 850;RZR Pro R|3;4;5|RAPPEL risque incendie Polaris|2021-08|Rappel|critique|Fuite carburant près de sources chaudes.|Remplacement durites + protection thermique, contrôle.|Carburant",
+    "RPL-CAN-2020-OUT|canam|Q1000;SSV18|Outlander 1000R;Maverick R|3;4|RAPPEL direction Can-Am|2020-04|Rappel|critique|Colonne/rotules de direction non conformes.|Remplacement rotules + colonne, couple spec.|Direction",
+    "RPL-CFM-2023-BRAKE|cfmoto|Q570;TR700|CForce 625;800MT|2;3|RAPPEL freinage CFMoto|2023-02|Rappel|majeure|Perte d'efficacité freinage avant.|Remplacement maître-cylindre + plaquettes, purge.|Freinage",
+    "RPL-ZERO-2022-BATT|zero;livewire|EV40;EV80|SR/F;DSR/X;S2 Alpinista|2;3|RAPPEL batterie HV Zero|2022-10|Rappel|critique|Risque thermique module batterie sur lots identifiés.|Contrôle modules, mise à jour BMS, remplacement module suspect.|Batterie HV",
+    "RPL-HD-2021-CLUTCH|harley|TWIN12;CU1250|Sportster S;Pan America 1250|1;2|RAPPEL embrayage hydraulique|2021-07|Rappel|majeure|Perte d'embrayage hydraulique possible.|Remplacement maître/récepteur embrayage, purge.|Transmission",
+    "RPL-BMW-2023-R13|bmwm|TR1300|R 1300 GS|4|RAPPEL fourche électronique|2023-05|Rappel|majeure|Défaut réglage électronique fourche.|Mise à jour + contrôle actuateurs suspension.|Suspension",
+    "RPL-TRI-2020-TIG|triumph|TWIN9|Tiger 900;Street Triple 765|2;3|RAPPEL durite radiateur|2020-02|Rappel|majeure|Durite radiateur pouvant fuir.|Remplacement durites + colliers, purge LDR.|Refroidissement",
+    "RPL-DUC-2022-V4|ducati|V4_11|Panigale V4;Multistrada V4|3;4|RAPPEL pompe huile|2022-06|Rappel|critique|Pompe à huile non conforme sur lots 2021-2022.|Remplacement pompe huile, contrôle pression.|Moteur",
+    "TSB-KTM-2020-2T|ktm;husqvarna;gasgas|T250;T300|EXC 300;TE 300;EC 300|3;4;5|TSB power valve entretien|2020-03|Moteur|modérée|Grippage vanne d'échappement sans entretien rapproché.|Nettoyage vanne toutes 10 h, graissage spec, contrôle câble.|Moteur",
+    "TSB-YAM-2021-CVT|yamaha|SC300;SC560|TMAX 560;NMAX 125|3;4|TSB variateur courroie|2021-04|Transmission|modérée|Usure courroie prématurée en urbain.|Courroie spec 12 000 km, galets, nettoyage variateur.|Transmission",
+    "TSB-HON-2022-PCX|honda|SC125|PCX 125;Forza 750|3;4|TSB antidémarrage smart key|2022-09|Électronique|modérée|Perte reconnaissance smart key.|Mise à jour ECU, contrôle antenne, reprogrammation clés.|Électronique",
+    "TSB-KAW-2023-Z9|kawasaki|RD660;RD900|Z900;Ninja 650|2;3|TSB capteur TPS calibration|2023-03|Électronique|modérée|Ralenti erratique après mise à jour.|Calibration TPS + mise à jour ECU.|Électronique",
+    "TSB-SUZ-2021-DR|suzuki|TR450|DR-Z 400;V-Strom 800|1;3|TSB tendeur chaîne distribution|2021-05|Distribution|modérée|Tendeur automatique fatigué.|Remplacement tendeur + contrôle patins.|Distribution",
+    "TSB-POL-2022-CVT|polaris|Q850;SSV18|Sportsman 850;RZR Pro R|3;4;5|TSB embrayage primaire ventilation|2022-07|Transmission|modérée|Surchauffe courroie en charge.|Nettoyage carter embrayage, courroie spec, contrôle ventilation.|Transmission",
+    "TSB-CAN-2021-DIFF|canam|Q1000|Outlander 1000R;Renegade 650|3;4|TSB différentiel avant|2021-09|Transmission|modérée|Usure crabots différentiel.|Vidange différentiel, contrôle crabots, graissage.|Transmission",
+    "TSB-CFM-2024-ECU|cfmoto|TR700;SP300|800MT;450SR|1;2|TSB cartographie ECU|2024-02|Moteur|modérée|À-coups à basse température.|Mise à jour cartographie ECU.|Moteur",
+    "TSB-ZERO-2023-CHG|zero;livewire|EV40;EV80|SR/F;S2 Del Mar|2;3|TSB connecteur charge|2023-06|Charge|modérée|Échauffement connecteur en charge rapide.|Nettoyage contacts, mise à jour courbe de charge.|Charge",
+    "TSB-BMW-2022-CE04|bmwm|EV10|CE 04|1|TSB gestion thermique batterie|2022-11|Batterie HV|modérée|Bridage puissance par forte chaleur.|Mise à jour BMS + contrôle ventilation batterie.|Batterie HV",
+    "TSB-TRI-2023-400|triumph|RD400|Speed 400;Scram 400|1|TSB rodage moteur 400|2023-08|Moteur|info|Consommation d'huile pendant rodage.|Vidange 1000 km, contrôle niveau, serrage collecteurs.|Moteur",
+    "TSB-RE-2024-HIM|royalenfield|MONO4|Himalayan 450;Scram 411|1|TSB capteur ABS boue|2024-04|Freinage|modérée|Perte signal ABS en boue.|Nettoyage capteur/entretoise, contrôle couronne ABS.|Freinage",
+    "TSB-ALL-2024-RAY|ktm;husqvarna;gasgas;beta;sherco|honda;yamaha|T125;T250;T300;F450|EXC 300;YZ 250;CRF 450R;SE-R 300|3;4;5|TSB tension rayons compétition|2024-05|Châssis|modérée|Desserrage rayons après premières sorties.|Contrôle tension rayons à 1 h, 5 h, 15 h, dévoilage.|Châssis",
+    "TSB-ALL-2023-CHAIN|ktm;honda;yamaha;kawasaki;suzuki|ducati|F450;T250;I4_10;V4_11|EXC-F 450;YZ 250F;CBR 1000 RR;Panigale V4|3;4;5|TSB kit chaîne graissage|2023-04|Transmission|modérée|Usure chaîne accélérée sans graissage adapté.|Graissage tous 500 km, contrôle tension, kit chaîne renforcé.|Transmission",
+    "TSB-ALL-2025-BATT|honda;yamaha;piaggio;kymco;sym|peugeotmot|SC125;SC300|PCX 125;NMAX 125;Django 125;Agility 125|2;3;4|TSB batterie hivernage|2025-01|Électronique|modérée|Sulfatation batterie après hivernage.|Maintien de charge hivernal, test tension, remplacement si < 12,4 V.|Électronique",
+    "TSB-ALL-2024-BRAKE|honda;yamaha;kawasaki;ducati;bmwm|triumph|I4_10;V4_11;TR1300|CBR 1000 RR;Panigale V4;R 1300 GS;Street Triple 765|3;4;5|TSB purge freins DOT4|2024-06|Freinage|modérée|Humidité dans circuit frein après 2 ans.|Purge DOT4 tous les 2 ans, contrôle plaquettes/disques.|Freinage"
+  ];
+
+  /* ── Construction ── */
+  var DB = { brands: [], models: [], engines: [], faults: [], tsb: [] };
+  MB.forEach(function (b) { DB.brands.push({ id: b[0], n: b[1], pays: b[2], grp: b[3], region: b[4] }); });
+  var bset = {}; DB.brands.forEach(function (b) { bset[b.id] = 1; });
+  Object.keys(MM).forEach(function (bid) {
+    if (!bset[bid]) return;
+    MM[bid].split("|").forEach(function (r) {
+      var f = r.split("^"); if (!f[0]) return;
+      var y0 = num(f[1], 2018), y1 = num(f[2], 2027); if (y0 > y1) { var t = y0; y0 = y1; y1 = t; }
+      DB.models.push({ id: bid + "-" + slug(f[0]), b: bid, n: f[0], y: [y0, y1], seg: SEGS[num(f[3], 0)] || SEGS[0], segIdx: num(f[3], 0), phase: num(f[4], 1) });
+    });
+  });
+  var n = 0;
+  ME.forEach(function (row) {
+    var f = row.split("|"); if (f.length < 10) return;
+    var code = f[0], fuel = f[1] === "e" ? "e" : f[1], disp = num(f[2], 0), label = f[3];
+    var vs = f[4].split(",").map(function (v) { var p = v.split(":"); return [num(p[0], 0), num(p[1], 0)]; }).filter(function (v) { return v[0] > 0; });
+    var gb = f[5], y0 = num(f[6], 2018), y1 = num(f[7], 2027);
+    var brands = f[8].split(";").map(nk).filter(Boolean);
+    var segs = f[9].split(";").map(function (x) { return num(x, -1); });
+    DB.models.forEach(function (m) {
+      if (brands.indexOf(m.b) < 0) return;
+      if (segs.length && segs.indexOf(m.segIdx) < 0) return;
+      var a = Math.max(y0, m.y[0]), b = Math.min(y1, m.y[1]); if (a > b) return;
+      vs.forEach(function (v) {
+        n++;
+        DB.engines.push({ id: "M" + String(n).padStart(4, "0"), m: m.id, code: code, fam: code, label: label + " " + v[0], fuel: fuel === "2T" ? "d" : fuel === "4T" ? "d" : fuel, type: fuel, disp: disp, hp: v[0], nm: v[1], kw: Math.round(v[0] * 0.7355), y: [a, b], gb: gb, seg: m.seg });
+      });
+    });
+  });
+  MF.forEach(function (r, i) {
+    var f = r.split("|"); if (f.length < 17) return;
+    var c = pair([f[13], f[14]], [0, 0]); if (c[1] < c[0]) c[1] = c[0];
+    DB.faults.push({ id: "MF" + String(i + 1).padStart(3, "0"), t: f[0], fam: list(f[1]), mt: list(f[2]), ph: list(f[3]), sev: nsev(f[4]), freq: nfreq(f[5]), y: yOf([f[6], f[7]]), km: kmOf([f[8], f[9]]), sym: list(f[10]), cause: f[11], fix: f[12], cost: c, status: f[15], dom: f[16] });
+  });
+  MT.forEach(function (r, i) {
+    var f = r.split("|"); if (f.length < 12) return;
+    var d = str2(f[6]); if (!/^\d{4}-\d{2}$/.test(d)) d = "2026-01";
+    DB.tsb.push({ id: "MT" + String(i + 1).padStart(3, "0"), ref: f[0], b: list(f[1]), fam: list(f[2]), mt: list(f[3]), ph: list(f[4]), t: f[5], date: d, cat: f[7], sev: nsev(f[8]), sum: f[9], act: f[10], dom: f[11] });
+  });
+  function str2(v) { return String(v == null ? "" : v).trim(); }
+  var MIDX = {}, BIDX = {}, EIDX = {};
+  DB.models.forEach(function (m) { MIDX[m.id] = m; });
+  DB.brands.forEach(function (b) { BIDX[b.id] = b; });
+  DB.engines.forEach(function (e) { EIDX[e.id] = e; });
+  function modelOf(e) { return MIDX[e.m] || null; }
+  function brandOf(e) { var m = modelOf(e); return m ? BIDX[m.b] : null; }
+  function tokHit(l, name) { var a = arr(l); if (!a.length) return false; var s = nk(name); for (var i = 0; i < a.length; i++) { var t = nk(a[i]); if (t === "*" || (t && s.indexOf(t) > -1)) return true; } return false; }
+  function fApply(f, e, m) { if (!f || !e || !m) return false; if (!(arr(f.fam).indexOf(e.fam) > -1 || tokHit(f.mt, m.n))) return false; var ph = arr(f.ph); return !ph.length || ph.indexOf("*") > -1 || ph.indexOf(String(m.phase)) > -1; }
+  function tApply(t, e, m) { if (!t || !e || !m) return false; if (!(arr(t.fam).indexOf(e.fam) > -1 || tokHit(t.mt, m.n) || arr(t.b).indexOf(m.b) > -1)) return false; var ph = arr(t.ph); return !ph.length || ph.indexOf("*") > -1 || ph.indexOf(String(m.phase)) > -1; }
+  function faultsFor(e) { var m = modelOf(e); return m ? DB.faults.filter(function (f) { return fApply(f, e, m); }) : []; }
+  function tsbFor(e) { var m = modelOf(e); return m ? DB.tsb.filter(function (t) { return tApply(t, e, m); }) : []; }
+  function isRecall(t) { return !!t && (t.cat === "Rappel" || /^RPL-/.test(String(t.ref))); }
+
+  /* ── État ── */
+  var ST = { b: "", m: "", e: "", y: 0, q: "", tab: "parc", sev: "" };
+  function enginesFiltered() {
+    var q = nk(ST.q);
+    return DB.engines.filter(function (e) {
+      var m = modelOf(e), b = brandOf(e);
+      if (ST.b && (!m || m.b !== ST.b)) return false;
+      if (ST.m && e.m !== ST.m) return false;
+      if (ST.e && e.id !== ST.e) return false;
+      if (ST.y && !(e.y[0] <= ST.y && ST.y <= e.y[1])) return false;
+      if (q && nk([b ? b.n : "", m ? m.n : "", e.code, e.label, e.gb, e.seg, REG[(b || {}).region] || ""].join(" ")).indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  function faultsFiltered() {
+    var q = nk(ST.q);
+    return DB.faults.filter(function (f) {
+      if (ST.sev && f.sev !== ST.sev) return false;
+      if (ST.y && !(f.y[0] <= ST.y && ST.y <= f.y[1])) return false;
+      if (ST.b) { var ok = DB.engines.some(function (e) { var m = modelOf(e); return m && m.b === ST.b && arr(f.fam).indexOf(e.fam) > -1; }) || (arr(f.mt).length && DB.models.some(function (m) { return m.b === ST.b && tokHit(f.mt, m.n); })); if (!ok) return false; }
+      if (ST.m && !tokHit(f.mt, (MIDX[ST.m] || {}).n || "")) { if (!(arr(f.fam).length && DB.engines.some(function (e) { return e.m === ST.m && arr(f.fam).indexOf(e.fam) > -1; }))) return false; }
+      if (q && nk([f.t, arr(f.fam).join(" "), arr(f.mt).join(" "), f.cause, f.fix, arr(f.sym).join(" "), f.dom].join(" ")).indexOf(q) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return SV[b.sev].w - SV[a.sev].w; });
+  }
+  function tsbFiltered(rc) {
+    var q = nk(ST.q);
+    return DB.tsb.filter(function (t) {
+      if (rc && !isRecall(t)) return false;
+      if (ST.sev && t.sev !== ST.sev) return false;
+      if (ST.b && arr(t.b).indexOf(ST.b) < 0 && !(arr(t.fam).length && DB.engines.some(function (e) { var m = modelOf(e); return m && m.b === ST.b && arr(t.fam).indexOf(e.fam) > -1; }))) return false;
+      if (ST.m && arr(t.b).indexOf((MIDX[ST.m] || {}).b) < 0 && !tokHit(t.mt, (MIDX[ST.m] || {}).n || "")) return false;
+      if (q && nk([t.t, t.ref, arr(t.fam).join(" "), arr(t.mt).join(" "), t.sum, t.act, t.cat].join(" ")).indexOf(q) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  }
+
+  /* ── Rendu ── */
+  function sevTag(s) { s = nsev(s); return "<span class='sev " + (s === "modérée" ? "mode" : esc(s)) + "'>" + esc(s) + "</span>"; }
+  function faultCard(f) {
+    var kk = kmOf(f), c = (SV[f.sev] || SV["modérée"]).c;
+    return "<div class='fcard' style='--sc:" + c + "'><div class='fh'><b>" + esc(f.t) + "</b>" + sevTag(f.sev) + "</div><div class='tags'><span class='tag'>" + esc(f.dom) + "</span><span class='tag'>" + yOf(f).join("-") + "</span><span class='tag'>" + fmt(kk[0]) + "–" + fmt(kk[1]) + " km</span><span class='tag'>fréq. " + esc(f.freq) + "</span></div><div class='tags'>" + arr(f.sym).map(function (s) { return "<span class='tag'>" + esc(s) + "</span>"; }).join("") + "</div><p><b>Cause :</b> " + esc(f.cause) + "</p><p><b>Action :</b> " + esc(f.fix) + "</p><div class='cost'>" + (f.cost[1] === 0 ? "Prise en charge / campagne" : fmt(f.cost[0]) + " – " + fmt(f.cost[1]) + " €") + "</div></div>";
+  }
+  function tsbCard(t) {
+    var rc = isRecall(t);
+    return "<div class='tsb" + (rc ? " rc" : "") + "'><div style='display:flex;gap:7px;flex-wrap:wrap'><span class='ref'>" + esc(t.ref) + "</span>" + sevTag(t.sev) + "<span class='tag'>" + esc(t.cat) + "</span><span class='tag'>" + esc(t.date) + "</span></div><b>" + esc(t.t) + "</b><p>" + esc(t.sum) + "</p><div class='act'><b>ACTION :</b> " + esc(t.act) + "</div></div>";
+  }
+  function engCard(e) {
+    var m = modelOf(e), b = brandOf(e);
+    var nf = faultsFor(e).length, nt = tsbFor(e).length, nr = tsbFor(e).filter(isRecall).length;
+    return "<div class='card' data-eng='" + e.id + "' tabindex='0' style='--fc:" + (e.type === "e" ? "#35C4E8" : e.type === "2T" ? "#FF6A00" : "#A8E63C") + "'><div class='top'><span>" + esc(b ? b.n : "—") + "</span><span class='tag'>" + esc(REG[(b || {}).region] || "") + "</span><span class='tag' style='margin-left:auto'>" + esc(e.seg || "") + "</span></div><h4>" + esc(m ? m.n : "") + "</h4><div class='lbl'>" + esc(e.label) + "</div><div class='pw'><b>" + e.hp + "</b><span>ch · " + e.kw + " kW</span><span style='margin-left:auto'>" + e.nm + " Nm</span></div><div class='tags'><span class='tag'>" + esc(e.code) + "</span><span class='tag'>" + (e.type === "e" ? "ÉLECTRIQUE" : e.type === "2T" ? "2 TEMPS" : e.type === "4T" ? "4 TEMPS" : e.type) + "</span><span class='tag'>" + e.y.join("-") + "</span><span class='tag'>" + esc(e.gb) + "</span>" + (nr ? "<span class='tag' style='color:#FF6A00'>" + nr + " rappel(s)</span>" : "") + "</div><div class='tags'><span class='tag'>" + nf + " panne(s)</span><span class='tag'>" + nt + " bulletin(s)</span></div></div>";
+  }
+  function render() {
+    var v = $("#mview"); if (!v) return;
+    var cB = DB.brands.length, cM = DB.models.length, cE = DB.engines.length, cF = DB.faults.length, cT = DB.tsb.length, cR = DB.tsb.filter(isRecall).length;
+    var h = "<div class='hero'><span class='race'>SUPERCROSS · NIGHT RACE</span><span class='kick'>UNIVERS MOTOS & QUADS — SÉPARÉ</span><h1>MÉGA-BASE <i>2018 → 2027</i><br>" + cB + " marques FR/EU/ASIE/CN/US · " + cM + " modèles · " + fmt(cE) + " motorisations</h1><p>" + cF + " pannes connues détaillées, " + cT + " bulletins dont <b style='color:#A8E63C'>" + cR + " campagnes de rappel</b>. Recherche massive par marque, modèle, motorisation, puissance et année.</p></div>";
+    h += "<div class='kpis'>" + [["MARQUES", cB, "#A8E63C"], ["MODÈLES", cM, "#FFD60A"], ["MOTORISATIONS", cE, "#35C4E8"], ["PANNES", cF, "#FF3B30"], ["RAPPELS", cR, "#FF6A00"], ["TSB / BULLETINS", cT - cR, "#A8E63C"]].map(function (k) { return "<div class='kpi' style='--kc:" + k[2] + "'><b>" + fmt(k[1]) + "</b><span>" + k[0] + "</span></div>"; }).join("") + "</div>";
+    h += "<div class='tabs'><button class='tab" + (ST.tab === "parc" ? " on" : "") + "' data-mtab='parc'>PARC & MOTORISATIONS<span class='n'>" + cE + "</span></button><button class='tab" + (ST.tab === "faults" ? " on" : "") + "' data-mtab='faults'>PANNES<span class='n'>" + cF + "</span></button><button class='tab" + (ST.tab === "tsb" ? " on" : "") + "' data-mtab='tsb'>TSB / BULLETINS<span class='n'>" + (cT - cR) + "</span></button><button class='tab" + (ST.tab === "recalls" ? " on" : "") + "' data-mtab='recalls'>RAPPELS<span class='n'>" + cR + "</span></button></div>";
+    h += "<div class='filters'><div><label class='lb'>1 · Marque</label><select class='sel' data-mf='b'><option value=''>Toutes (" + cB + ")</option>" + DB.brands.map(function (b) { return "<option value='" + b.id + "'" + (ST.b === b.id ? " selected" : "") + ">" + esc(b.n) + " — " + REG[b.region] + "</option>"; }).join("") + "</select></div>";
+    var mods = ST.b ? DB.models.filter(function (m) { return m.b === ST.b; }) : [];
+    h += "<div><label class='lb'>2 · Modèle</label><select class='sel' data-mf='m'" + (ST.b ? "" : " disabled") + "><option value=''>" + (ST.b ? mods.length + " modèle(s)" : "Choisir une marque") + "</option>" + mods.map(function (m) { return "<option value='" + m.id + "'" + (ST.m === m.id ? " selected" : "") + ">" + esc(m.n) + " · " + esc(m.seg) + " · phase " + m.phase + "</option>"; }).join("") + "</select></div>";
+    var engs = ST.m ? DB.engines.filter(function (e) { return e.m === ST.m; }) : [];
+    h += "<div><label class='lb'>3 · Motorisation & puissance</label><select class='sel' data-mf='e'" + (ST.m ? "" : " disabled") + "><option value=''>" + (ST.m ? engs.length + " motorisation(s)" : "Choisir un modèle") + "</option>" + engs.map(function (e) { return "<option value='" + e.id + "'" + (ST.e === e.id ? " selected" : "") + ">" + esc(e.label) + " · " + e.hp + " ch · " + e.y.join("-") + "</option>"; }).join("") + "</select></div>";
+    h += "<div><label class='lb'>Année du véhicule</label><select class='sel' data-mf='y'><option value='0'>Toutes</option>" + [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027].map(function (y) { return "<option value='" + y + "'" + (ST.y === y ? " selected" : "") + ">" + y + "</option>"; }).join("") + "</select></div>";
+    h += "<div><label class='lb'>Sévérité</label><select class='sel' data-mf='sev'><option value=''>Toutes</option>" + Object.keys(SV).map(function (s) { return "<option value='" + s + "'" + (ST.sev === s ? " selected" : "") + ">" + s + "</option>"; }).join("") + "</select></div></div>";
+    if (ST.tab === "parc") {
+      var le = enginesFiltered();
+      h += "<div class='bar'><span class='cnt'>" + fmt(le.length) + " motorisation(s)</span>" + (ST.e ? "<button class='btn pri' data-mact='detail' data-id='" + ST.e + "'>Fiche & corrélations</button>" : "") + "</div>";
+      h += "<div class='grid'>" + (le.length ? le.slice(0, 120).map(engCard).join("") : "<div class='empty' style='grid-column:1/-1'>Aucune motorisation pour ces filtres.</div>") + "</div>";
+    } else if (ST.tab === "faults") {
+      var lf = faultsFiltered();
+      h += "<div class='bar'><span class='cnt'>" + lf.length + " panne(s) détaillée(s)</span></div>";
+      h += lf.length ? "<div class='g2'>" + lf.slice(0, 60).map(function (f) { return "<div>" + faultCard(f) + "</div>"; }).join("") + "</div>" : "<div class='empty'>Aucune panne pour ces filtres.</div>";
+    } else {
+      var lt = tsbFiltered(ST.tab === "recalls");
+      h += "<div class='bar'><span class='cnt'>" + lt.length + " bulletin(s)</span></div>";
+      h += lt.length ? "<div class='g2'>" + lt.slice(0, 60).map(function (t) { return "<div>" + tsbCard(t) + "</div>"; }).join("") + "</div>" : "<div class='empty'>Aucun bulletin pour ces filtres.</div>";
+    }
+    v.innerHTML = h;
+    var a = $("#stB"), b2 = $("#stM"), c2 = $("#stE"), d2 = $("#stF"), e2 = $("#stT");
+    if (a) a.textContent = cB; if (b2) b2.textContent = cM; if (c2) c2.textContent = fmt(cE); if (d2) d2.textContent = cF; if (e2) e2.textContent = cT;
+  }
+  function openDetail(id) {
+    var e = EIDX[id]; if (!e) return;
+    var m = modelOf(e), b = brandOf(e), fs = faultsFor(e), ts = tsbFor(e);
+    var h = "<div class='sg'>" + [["Marque", b ? b.n : "—"], ["Région", b ? REG[b.region] : "—"], ["Modèle", m ? m.n : "—"], ["Segment", m ? m.seg : "—"], ["Phase", m ? m.phase : "—"], ["Code", e.code], ["Type", e.type === "e" ? "Électrique" : e.type === "2T" ? "2 temps" : e.type === "4T" ? "4 temps" : e.type], ["Cylindrée", e.disp ? e.disp + " cm³" : "—"], ["Puissance", e.hp + " ch / " + e.kw + " kW"], ["Couple", e.nm + " Nm"], ["Boîte", e.gb], ["Production", e.y.join("-")]].map(function (r) { return "<div class='sp'><span>" + esc(r[0]) + "</span><b class='hl'>" + esc(r[1]) + "</b></div>"; }).join("") + "</div>";
+    h += "<h3 style='font:600 14px var(--gd);margin:14px 0 8px;color:#A8E63C'>Pannes connues (" + fs.length + ")</h3>" + (fs.length ? fs.map(faultCard).join("") : "<p style='color:var(--t2)'>Aucune panne corrélée.</p>");
+    h += "<h3 style='font:600 14px var(--gd);margin:14px 0 8px;color:#A8E63C'>Rappels & bulletins (" + ts.length + ")</h3>" + (ts.length ? ts.map(tsbCard).join("") : "<p style='color:var(--t2)'>Aucun bulletin corrélé.</p>");
+    var ti = $("#mmTitle"), bd = $("#mmBody"), md = $("#mmodal");
+    if (ti) ti.textContent = (b ? b.n + " " : "") + (m ? m.n + " — " : "") + e.label;
+    if (bd) bd.innerHTML = h;
+    if (md) { md.classList.add("on"); D.body.classList.add("lock"); }
+  }
+  function closeDetail() { var md = $("#mmodal"); if (md) md.classList.remove("on"); D.body.classList.remove("lock"); }
+
+  /* ── Fond dynamique : moto cross qui cabre (stadium supercross) ── */
+  var CV = null, CX = null, RAF = 0, T = 0, LAST = 0, DIRT = [];
+  function resize() { if (!CV) return; var d = Math.min(window.devicePixelRatio || 1, 1.5); CV.width = Math.max(1, innerWidth * d); CV.height = Math.max(1, innerHeight * d); CX.setTransform(d, 0, 0, d, 0, 0); }
+  function drawScene(t) {
+    var W = innerWidth, H = innerHeight, c = CX, i;
+    var sky = c.createLinearGradient(0, 0, 0, H * 0.6);
+    sky.addColorStop(0, "#04070C"); sky.addColorStop(0.7, "#0A1220"); sky.addColorStop(1, "#141005");
+    c.fillStyle = sky; c.fillRect(0, 0, W, H * 0.6);
+    for (i = 0; i < 6; i++) {
+      var fx = ((i * 0.19 + 0.06) * W), fy = H * 0.08;
+      var g = c.createRadialGradient(fx, fy, 0, fx, fy, H * 0.34);
+      g.addColorStop(0, "rgba(255,244,214,.22)"); g.addColorStop(1, "rgba(255,244,214,0)");
+      c.fillStyle = g; c.fillRect(0, 0, W, H * 0.6);
+      c.strokeStyle = "rgba(255,244,214,.3)"; c.lineWidth = 2;
+      c.beginPath(); c.moveTo(fx, fy); c.lineTo(fx, H * 0.26); c.stroke();
+    }
+    c.fillStyle = "#0B0F06"; c.fillRect(0, H * 0.34, W, H * 0.08);
+    for (i = 0; i < 30; i++) {
+      var bx2 = ((i * 80 - (t * 200) % 80) % (W + 80)) - 40;
+      c.fillStyle = i % 2 ? "rgba(168,230,60,.14)" : "rgba(238,244,228,.08)";
+      c.fillRect(bx2, H * 0.34, 40, H * 0.07);
+    }
+    var gy = H * 0.42;
+    var gr = c.createLinearGradient(0, gy, 0, H);
+    gr.addColorStop(0, "#3A2A12"); gr.addColorStop(0.4, "#2A1D0C"); gr.addColorStop(1, "#160F06");
+    c.fillStyle = gr; c.fillRect(0, gy, W, H - gy);
+    for (i = 0; i < 40; i++) {
+      var mx = ((i * 60 - (t * 520) % 60) % (W + 60)) - 30;
+      var my = gy + 20 + ((i * 37) % (H - gy - 40));
+      c.fillStyle = "rgba(0,0,0,.25)";
+      c.beginPath(); c.ellipse(mx, my, 16, 5, 0, 0, Math.PI * 2); c.fill();
+    }
+    c.strokeStyle = "rgba(168,230,60,.25)"; c.lineWidth = 3;
+    c.beginPath();
+    for (i = 0; i <= W; i += 24) { var yy = gy + 10 + Math.sin((i + t * 520) * 0.02) * 6; if (i) c.lineTo(i, yy); else c.moveTo(i, yy); }
+    c.stroke();
+    var wx = W * 0.34, wy = H * 0.66;
+    var ang = -0.42 + Math.sin(t * 2.2) * 0.05;
+    c.save(); c.translate(wx, wy); c.rotate(ang);
+    c.strokeStyle = "rgba(168,230,60,.4)"; c.lineWidth = 2;
+    for (i = 0; i < 6; i++) { c.beginPath(); c.moveTo(-140 - i * 22, 10 + i * 6); c.lineTo(-70, 6); c.stroke(); }
+    function wheel(x, y, r, spin) {
+      c.fillStyle = "#0A0A0A"; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = "#2A2A2A"; c.lineWidth = 6; c.beginPath(); c.arc(x, y, r - 5, 0, Math.PI * 2); c.stroke();
+      c.save(); c.translate(x, y); c.rotate(spin);
+      c.strokeStyle = "#8A8A8A"; c.lineWidth = 2;
+      for (var s2 = 0; s2 < 6; s2++) { c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(s2 * 1.047) * (r - 8), Math.sin(s2 * 1.047) * (r - 8)); c.stroke(); }
+      c.restore();
+      c.fillStyle = "#C9C9C9"; c.beginPath(); c.arc(x, y, 4, 0, Math.PI * 2); c.fill();
+    }
+    wheel(-52, 26, 26, t * 22);
+    wheel(58, -34, 24, t * 16);
+    c.strokeStyle = "#A8E63C"; c.lineWidth = 7;
+    c.beginPath(); c.moveTo(-52, 26); c.lineTo(-14, 2); c.lineTo(24, -6); c.stroke();
+    c.beginPath(); c.moveTo(24, -6); c.lineTo(58, -34); c.stroke();
+    c.fillStyle = "#A8E63C";
+    c.beginPath(); c.moveTo(-20, -2); c.lineTo(16, -14); c.lineTo(30, -8); c.lineTo(10, 6); c.closePath(); c.fill();
+    c.fillStyle = "#141D0C"; c.beginPath(); c.moveTo(-24, -6); c.lineTo(-6, -16); c.lineTo(6, -12); c.lineTo(-10, -2); c.closePath(); c.fill();
+    c.strokeStyle = "#E4FF7A"; c.lineWidth = 4;
+    c.beginPath(); c.moveTo(26, -12); c.lineTo(40, -26); c.stroke();
+    c.beginPath(); c.moveTo(26, -12); c.lineTo(44, -18); c.stroke();
+    c.fillStyle = "#0E1509";
+    c.beginPath(); c.ellipse(2, -26, 16, 9, -0.5, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#FFD60A"; c.beginPath(); c.arc(14, -32, 6, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#141D0C"; c.beginPath(); c.arc(16, -33, 3, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "#141D0C"; c.lineWidth = 6;
+    c.beginPath(); c.moveTo(4, -24); c.lineTo(20, -14); c.lineTo(34, -20); c.stroke();
+    c.beginPath(); c.moveTo(2, -22); c.lineTo(10, -8); c.lineTo(2, 2); c.stroke();
+    c.fillStyle = "rgba(255,214,10,.85)"; c.beginPath(); c.arc(60, -40, 3, 0, Math.PI * 2); c.fill();
+    c.restore();
+    if (DIRT.length < 60 && Math.random() < 0.8) DIRT.push({ x: wx - 70, y: wy + 30, vx: -3 - Math.random() * 4, vy: -1 - Math.random() * 3, r: 2 + Math.random() * 4, a: 0.7 });
+    DIRT = DIRT.filter(function (p) { return p.a > 0.03; });
+    DIRT.forEach(function (p) { p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.a *= 0.95; c.fillStyle = "rgba(90,64,28," + p.a.toFixed(3) + ")"; c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fill(); });
+    c.fillStyle = "rgba(168,230,60,.9)"; c.font = "600 12px 'IBM Plex Mono',monospace";
+    c.fillText("LAP " + (Math.floor(t / 18) + 1), 16, 26);
+    c.fillText(Math.round(68 + Math.sin(t * 1.3) * 12) + " km/h · WHEELIE", 16, 44);
+    c.fillStyle = "rgba(255,214,10,.8)"; c.fillText("SUPERCROSS NIGHT · MOTOS & QUADS", 16, 62);
+  }
+  function loop(n2) { RAF = requestAnimationFrame(loop); var dt = Math.min(0.05, (n2 - LAST) / 1000); LAST = n2; T += dt; drawScene(T); }
+  function startScene() { CV = $("#mbg"); if (!CV) return; CX = CV.getContext("2d"); if (!CX) return; resize(); window.addEventListener("resize", resize); LAST = performance.now(); RAF = requestAnimationFrame(loop); D.addEventListener("visibilitychange", function () { if (D.hidden) cancelAnimationFrame(RAF); else { LAST = performance.now(); RAF = requestAnimationFrame(loop); } }); }
+
+  /* ── Événements ── */
+  D.addEventListener("click", function (ev) {
+    var t = ev.target;
+    var card = t.closest ? t.closest("[data-eng]") : null;
+    if (card) { ST.e = card.dataset.eng; openDetail(ST.e); render(); return; }
+    var tab = t.closest ? t.closest("[data-mtab]") : null;
+    if (tab) { ST.tab = tab.dataset.mtab; render(); return; }
+    var det = t.closest ? t.closest("[data-mact='detail']") : null;
+    if (det) { openDetail(det.dataset.id); return; }
+    if (t.closest && t.closest("#mmClose")) { closeDetail(); return; }
+    if (t.id === "mmodal") { closeDetail(); return; }
+  });
+  D.addEventListener("change", function (ev) {
+    var t = ev.target; if (!t || !t.dataset || !t.dataset.mf) return;
+    var k = t.dataset.mf;
+    if (k === "b") { ST.b = t.value; ST.m = ""; ST.e = ""; }
+    else if (k === "m") { ST.m = t.value; ST.e = ""; }
+    else if (k === "e") { ST.e = t.value; }
+    else if (k === "y") { ST.y = num(t.value, 0); }
+    else if (k === "sev") { ST.sev = t.value; }
+    render();
+  });
+  D.addEventListener("input", function (ev) { var t = ev.target; if (t && t.id === "mq") { ST.q = t.value; render(); } });
+  D.addEventListener("keydown", function (ev) { if (ev.key === "Escape") closeDetail(); });
+  var bk = $("#mback");
+  if (bk) bk.addEventListener("click", function (e) { if (window.parent && window.parent !== window) { e.preventDefault(); try { window.parent.postMessage({ md: "uniback" }, "*"); } catch (err) {} } });
+
+  function boot() { startScene(); render(); }
+  if (D.readyState === "loading") D.addEventListener("DOMContentLoaded", boot); else boot();
+})();
+</script>
+</body>
+</html>
