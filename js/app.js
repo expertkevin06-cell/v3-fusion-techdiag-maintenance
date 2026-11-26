@@ -1,472 +1,1417 @@
-/* MECADATA v15.1 — CORRECTION SYNTAXE (accolade try/catch purgeCache).
-   • Ouverture rapide : corrélations mémoïsées, couverture O(n), tests &
-     balayage auto différés (idle) après affichage du portail.
-   • Sauvegarde locale admin : bouton, autosave 15 s, save à la fermeture,
-     backup JSON export/restauration.
-   • Accès tiers : une seule case mot de passe, secret jamais affiché.
-   • Recherche auto massive voitures : lancement + cycle 30 jours + manuel. */
-(function () {
-  "use strict";
-  var D = document;
-  function $(s, r) { return (r || D).querySelector(s); }
-  function $$(s, r) { return [].slice.call((r || D).querySelectorAll(s)); }
-  var EM = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return EM[c]; }); }
-  function num(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
-  function fmt(n) { n = num(n, 0); try { return n.toLocaleString("fr-FR"); } catch (e) { return String(n); } }
-  function clamp(v, a, b) { return Math.max(a, Math.min(b, num(v, a))); }
-  function uid(p) { return p + Math.random().toString(36).slice(2, 7).toUpperCase(); }
-  function clone(o) { try { return JSON.parse(JSON.stringify(o)); } catch (e) { return o; } }
-  function arr(v) { return Array.isArray(v) ? v : []; }
-  function str(v, d) { var s = String(v == null ? "" : v).trim(); return s || (d == null ? "" : d); }
-  function list(v) { if (Array.isArray(v)) return v.filter(Boolean); return String(v == null ? "" : v).split(/[;,|]/).map(function (s) { return s.trim(); }).filter(Boolean); }
-  function pair(v, d) { var a = arr(v); return [num(a[0], d[0]), num(a[1], d[1])]; }
-  function kmOf(f) { var p = pair(f && f.km, [0, 200000]); return p[0] > p[1] ? [p[1], p[0]] : p; }
-  function yOf(f) { var p = pair(f && f.y, [2017, 2027]); return p[0] > p[1] ? [p[1], p[0]] : p; }
-  function costOf(f) { var p = pair(f && f.cost, [0, 0]); return p[1] < p[0] ? [p[0], p[0]] : p; }
-  function ov(a, b) { var x = pair(a, [0, 0]), y = pair(b, [0, 0]); return x[0] <= y[1] && y[0] <= x[1]; }
-  function ic(n, st) { return "<svg class='ic'" + (st ? " style='" + st + "'" : "") + "><use href='#i-" + n + "'/></svg>"; }
-  function deb(f, t) { var h; return function () { var a = arguments, s = this; clearTimeout(h); h = setTimeout(function () { f.apply(s, a); }, t); }; }
-  function idle(f, ms) { if (window.requestIdleCallback) requestIdleCallback(function () { f(); }, { timeout: ms || 1500 }); else setTimeout(f, ms || 250); }
-  function nk(s) { return String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, ""); }
-  function slug(s) { return nk(s).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || uid("x"); }
-  var ERRORS = [];
-  function logErr(w, e) { var m = w + " : " + ((e && e.message) ? e.message : String(e)); ERRORS.push({ ts: Date.now(), m: m }); if (ERRORS.length > 60) ERRORS.shift(); try { window.__MD_ERR.push({ msg: m, src: "app", line: 0, col: 0 }); } catch (x) {} }
-  window.addEventListener("error", function (e) { logErr("window", e.error || e.message); });
-  window.addEventListener("unhandledrejection", function (e) { logErr("promise", e.reason); });
-  function safe(w, f, fb) { try { return f(); } catch (e) { logErr(w, e); return fb; } }
-  var MEM = {};
-  var STORE = {
-    local: false,
-    probe: function () { try { localStorage.setItem("__m", "1"); localStorage.removeItem("__m"); this.local = true; } catch (e) {} },
-    get: function (k) { if (this.local) { try { return localStorage.getItem(k); } catch (e) {} } return MEM[k] || null; },
-    set: function (k, v) { if (this.local) { try { localStorage.setItem(k, v); return true; } catch (e) { this.local = false; } } MEM[k] = v; return true; },
-    del: function (k) { if (this.local) { try { localStorage.removeItem(k); } catch (e) {} } delete MEM[k]; }
+/* MECADATA v17 — moteur fiable, format multi-lignes vérifiable.
+   Fonctions : portail admin/tiers (1 case mot de passe tiers), parc cascades,
+   plans 200 000 km, recherche prédictive, pannes/TSB/rappels corrélés,
+   studio fonds dynamiques, administration (imports, exports, méga-base,
+   sauvegarde locale + backup, diffusion), recherche auto massive,
+   autovérification, purge cache à l'ouverture. */
+"use strict";
+
+/* ---------- utilitaires ---------- */
+var D = document;
+function $(s, r) { return (r || D).querySelector(s); }
+function $$(s, r) { return [].slice.call((r || D).querySelectorAll(s)); }
+var EM = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return EM[c]; });
+}
+function num(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
+function fmt(n) {
+  n = num(n, 0);
+  try { return n.toLocaleString("fr-FR"); } catch (e) { return String(n); }
+}
+function clamp(v, a, b) { return Math.max(a, Math.min(b, num(v, a))); }
+function uid(p) { return p + Math.random().toString(36).slice(2, 7).toUpperCase(); }
+function clone(o) {
+  try { return JSON.parse(JSON.stringify(o)); } catch (e) { return o; }
+}
+function arr(v) { return Array.isArray(v) v : []; }
+function str(v, d) {
+  var s = String(v == null ? "" : v).trim();
+  return s || (d == null ? "" : d);
+}
+function list(v) {
+  if (Array.isArray(v)) { return v.filter(Boolean); }
+  return String(v == null ? "" : v).split(/[;,|]/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+function pair(v, d) {
+  var a = arr(v);
+  return [num(a[0], d[0]), num(a[1], d[1])];
+}
+function kmOf(f) { var p = pair(f && f.km, [0, 200000]); return p[0] > p[1] ? [p[1], p[0]] : p; }
+function yOf(f) { var p = pair(f && f.y, [2017, 2027]); return p[0] > p[1] ? [p[1], p[0]] : p; }
+function costOf(f) { var p = pair(f && f.cost, [0, 0]); return p[1] < p[0] ? [p[0], p[0]] : p; }
+function ov(a, b) {
+  var x = pair(a, [0, 0]);
+  var y = pair(b, [0, 0]);
+  return x[0] <= y[1] && y[0] <= x[1];
+}
+function ic(n, st) {
+  return "<svg class='ic'" + (st ? " style='" + st + "'" : "") + "><use href='#i-" + n + "'/></svg>";
+}
+function deb(f, t) {
+  var h;
+  return function () {
+    var a = arguments, s = this;
+    clearTimeout(h);
+    h = setTimeout(function () { f.apply(s, a); }, t);
   };
-  STORE.probe();
-  function download(n, c) { safe("dl", function () { var b = new Blob([c], { type: "application/json" }), u = URL.createObjectURL(b), a = D.createElement("a"); a.href = u; a.download = n; D.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 700); }, null); }
-  var PREF = { sound: true }, AUC = { ctx: null };
-  function beep(k) { if (!PREF.sound) return; safe("audio", function () { var C = window.AudioContext || window.webkitAudioContext; if (!C) return; AUC.ctx = AUC.ctx || new C(); var c = AUC.ctx, t = c.currentTime; function p(f0, f1, d, ty, g, dt) { dt = dt || 0; var o = c.createOscillator(), v = c.createGain(); o.type = ty; o.frequency.setValueAtTime(f0, t + dt); if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dt + d); v.gain.setValueAtTime(0, t + dt); v.gain.linearRampToValueAtTime(g, t + dt + 0.008); v.gain.exponentialRampToValueAtTime(0.0001, t + dt + d); o.connect(v); v.connect(c.destination); o.start(t + dt); o.stop(t + dt + d + 0.03); } if (k === "tick") p(1700, 1400, 0.045, "square", 0.03); else if (k === "ok") { p(660, 0, 0.09, "sine", 0.055); p(990, 0, 0.14, "sine", 0.055, 0.09); } else if (k === "err") p(150, 110, 0.2, "sawtooth", 0.06); else if (k === "imp") { p(520, 0, 0.08, "sine", 0.045); p(660, 0, 0.08, "sine", 0.045, 0.08); p(880, 0, 0.16, "sine", 0.05, 0.16); } else if (k === "open") p(320, 560, 0.09, "sine", 0.045); else if (k === "close") p(520, 300, 0.08, "sine", 0.035); }, null); }
-  function toast(type, title, msg, undo) { var box = $("#ts"); if (!box) return; while (box.children.length >= 3) box.removeChild(box.firstChild); var el = D.createElement("div"); el.className = "to " + type; var h = ic({ ok: "check", err: "alert", warn: "alert", info: "info" }[type] || "info") + "<div style='flex:1;min-width:0'><b>" + esc(title) + "</b>" + (msg ? "<p>" + esc(msg) + "</p>" : "") + "</div>"; if (undo) h += "<button class='btn xs amb' data-act='undo'>Annuler</button>"; h += "<span class='pg' style='animation-duration:" + (undo ? 8 : 4.6) + "s'></span>"; el.innerHTML = h; box.appendChild(el); var kill = function () { el.classList.add("out"); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 260); }; el._t = setTimeout(kill, undo ? 8000 : 4600); el.addEventListener("click", function (e) { if (e.target.closest && e.target.closest("[data-act=undo]")) { clearTimeout(el._t); kill(); } }); }
-  var modalOpen = false;
-  function openModal(html, cls) { var r = $("#md"); if (!r) return; r.innerHTML = "<div class='ms' data-act='mscrim'><div class='mo " + (cls || "") + "'>" + html + "</div></div>"; requestAnimationFrame(function () { r.classList.add("on"); }); D.body.classList.add("lock"); modalOpen = true; beep("open"); }
-  function closeModal() { var r = $("#md"); if (!r || !r.innerHTML) return; r.classList.remove("on"); modalOpen = false; if (!S.drawer) D.body.classList.remove("lock"); setTimeout(function () { if (!modalOpen) r.innerHTML = ""; }, 220); beep("close"); }
-  function confirmModal(t, m, a, l) { openModal("<div class='mh'>" + ic("alert", "color:#FFAF2E") + "<h3>" + esc(t) + "</h3><button class='tb' data-act='mclose'>" + ic("x") + "</button></div><div class='mb2'><p class='muted'>" + esc(m) + "</p></div><div class='mf'><button class='btn ghost' data-act='mclose'>Annuler</button><button class='btn dgr' data-act='" + a + "'>" + esc(l || "Confirmer") + "</button></div>", "slim"); }
+}
+function idle(f, ms) {
+  if (window.requestIdleCallback) { requestIdleCallback(function () { f(); }, { timeout: ms || 1500 }); }
+  else { setTimeout(f, ms || 250); }
+}
+function nk(s) {
+  return String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+}
+function slug(s) {
+  return nk(s).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || uid("x");
+}
+var ERRORS = [];
+function logErr(w, e) {
+  var m = w + " : " + ((e && e.message) ? e.message : String(e));
+  ERRORS.push({ ts: Date.now(), m: m });
+  if (ERRORS.length > 60) { ERRORS.shift(); }
+  try { window.__MD_ERR.push({ msg: m, src: "app", line: 0, col: 0 }); } catch (x) {}
+}
+window.addEventListener("error", function (e) { logErr("window", e.error || e.message); });
+window.addEventListener("unhandledrejection", function (e) { logErr("promise", e.reason); });
+function safe(w, f, fb) {
+  try { return f(); } catch (e) { logErr(w, e); return fb; }
+}
 
-  var PWD = "Kevin83600", TPWD = "expert83", KEY = "mecadata_v15", AKEY = "md_access_v15", PKEY = "md_pub_v15", AKEY2 = "md_auto_v15", YMAX = 2027, KMMAX = 200000;
-  var LEGACY = ["mecadata_v72", "mecadata_v73", "mecadata_v8", "mecadata_v81", "mecadata_v9", "mecadata_v10", "mecadata_v11", "mecadata_v12", "md_access_v8", "md_access_v9", "md_access_v10", "md_access_v11", "md_access_v12", "md_pub_v9", "md_pub_v10", "md_pub_v11", "md_pub_v12", "md_auto_v11", "md_auto_v12", "md_adm", "md_boot"];
-  var PURGED = { local: 0, session: 0, caches: 0, sw: 0, done: false };
-  function purgeCache(full) {
-    var n = 0;
-    LEGACY.forEach(function (k) { if (STORE.get(k) !== null) { STORE.del(k); n++; } });
-    if (STORE.get(KEY) !== null) { STORE.del(KEY); n++; }
-    if (STORE.get(PKEY) !== null) { STORE.del(PKEY); n++; }
-    if (full && STORE.get(AKEY) !== null) { STORE.del(AKEY); n++; }
-    PURGED.local = n;
-    var s = 0;
-    try {
-      if (window.sessionStorage) { s = sessionStorage.length; sessionStorage.clear(); }
-    } catch (e) { s = 0; }
-    PURGED.session = s;
-    safe("caches", function () {
-      if (window.caches && caches.keys) {
-        caches.keys().then(function (ks) {
-          PURGED.caches = arr(ks).length;
-          arr(ks).forEach(function (k) { safe("cd", function () { caches.delete(k); }, null); });
-        }).catch(function () {});
-      }
-    }, null);
-    safe("sw", function () {
-      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-        navigator.serviceWorker.getRegistrations().then(function (rs) {
-          PURGED.sw = arr(rs).length;
-          arr(rs).forEach(function (r) { safe("ur", function () { r.unregister(); }, null); });
-        }).catch(function () {});
-      }
-    }, null);
-    PURGED.done = true;
-    return PURGED;
+/* ---------- stockage ---------- */
+var MEM = {};
+var STORE = {
+  local: false,
+  probe: function () {
+    try { localStorage.setItem("__m", "1"); localStorage.removeItem("__m"); this.local = true; } catch (e) {}
+  },
+  get: function (k) {
+    if (this.local) {
+      try { return localStorage.getItem(k); } catch (e) {}
+    }
+    return MEM[k] || null;
+  },
+  set: function (k, v) {
+    if (this.local) {
+      try { localStorage.setItem(k, v); return true; } catch (e) { this.local = false; }
+    }
+    MEM[k] = v;
+    return true;
+  },
+  del: function (k) {
+    if (this.local) {
+      try { localStorage.removeItem(k); } catch (e) {}
+    }
+    delete MEM[k];
   }
-  function purgeLabel() { return PURGED.local + " locale(s) · " + PURGED.session + " session · " + PURGED.caches + " cache(s) PWA · " + PURGED.sw + " SW"; }
+};
+STORE.probe();
+function download(n, c) {
+  safe("dl", function () {
+    var b = new Blob([c], { type: "application/json" });
+    var u = URL.createObjectURL(b);
+    var a = D.createElement("a");
+    a.href = u;
+    a.download = n;
+    D.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 700);
+  }, null);
+}
 
-  var RAW = window.MD_RAW || { br: [], md: {}, me: {}, ft: [], ts: [], svc: [], cand: [], segs: [] };
-  var SEGS = arr(RAW.segs).length ? RAW.segs : ["Citadine", "Micro-citadine", "Compacte", "SUV urbain", "SUV compact", "Berline", "Break", "Ludospace", "Utilitaire", "Coupé", "Roadster", "Sportive", "Monospace", "Pick-up"];
-  var FU = { e: { l: "Essence", c: "#FFAF2E" }, d: { l: "Diesel", c: "#4D8DFF" }, h: { l: "Hybride", c: "#43E08B" }, p: { l: "Hybride rechargeable", c: "#19B8A6" }, b: { l: "Électrique", c: "#E45CFF" }, g: { l: "GPL", c: "#A8E63C" } };
-  var SV = { critique: { w: 32, c: "#FF4D5E" }, majeure: { w: 18, c: "#FF7A3D" }, "modérée": { w: 9, c: "#FFAF2E" }, mineure: { w: 4, c: "#4D8DFF" }, info: { w: 0, c: "#25D4EE" } };
-  var FQ = { "élevée": 1.25, moyenne: 1, faible: 0.7 };
-  var REGIONS = { france: "France", europe: "Europe", asie: "Asie", chine: "Chine", amerique: "Amérique" };
-  var FILES = [["brands", "Marques"], ["models", "Modèles"], ["engines", "Motorisations"], ["faults", "Pannes"], ["tsb", "TSB / Rappels"]];
-  function nsev(v) { var k = nk(v), m = { critique: "critique", majeure: "majeure", moderee: "modérée", mineure: "mineure", info: "info" }; return m[k] || (SV[v] ? v : "modérée"); }
-  function nfreq(v) { var k = nk(v), m = { elevee: "élevée", moyenne: "moyenne", faible: "faible" }; return m[k] || (FQ[v] ? v : "moyenne"); }
-  function nfuel(v) { var k = nk(v), m = { e: "e", essence: "e", d: "d", diesel: "d", h: "h", hybride: "h", p: "p", phev: "p", b: "b", ev: "b", electrique: "b", g: "g", gpl: "g" }; return m[k] || (FU[k] ? k : "e"); }
-  function regionOf(p) { var k = nk(p); if (k.indexOf("france") > -1) return "france"; if (k.indexOf("chine") > -1) return "chine"; if (k.indexOf("japon") > -1 || k.indexOf("coree") > -1 || k.indexOf("vietnam") > -1) return "asie"; if (k.indexOf("etatsunis") > -1) return "amerique"; return "europe"; }
-  function IVL(v) { v = num(v, 0); return v >= 75 ? ["CRITIQUE", "#FF4D5E"] : v >= 50 ? ["ÉLEVÉ", "#FF7A3D"] : v >= 25 ? ["MODÉRÉ", "#FFAF2E"] : ["FAIBLE", "#43E08B"]; }
-  var SVC_FB = { key: "fb", fams: ["*"], fuel: "*", base: 20000, months: 12, oil: ["5W-30 ACEA C3", 4.5], dist: ["Selon constructeur", 150000, 72], items: [["Vidange huile + filtre", 20000, 12], ["Filtre habitacle", 20000, 12], ["Liquide de freins", 0, 24], ["Contrôle plaquettes", 20000, 12], ["Contrôle pneumatiques", 10000, 6]], controls: ["Niveau huile", "Pression pneus", "Plaquettes", "Voyants"], fluids: ["DOT4", "G12", "120", "2.4", "2.4", "R1234yf", "AGM 70Ah"] };
-
-  var WP = {
-    P: { mode: "nebula", theme: "diag", useCustom: false, custom: { bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" }, density: 64, count: 150, speed: 100, turb: 38, scale: 66, glow: 60, blur: 0, stroke: 1.4, drift: 40, dir: 1, quality: "std", grid: true, run: true, bg: true },
-    TH: { diag: { n: "Diagnostic", bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" }, torque: { n: "Couple", bg: "#0B0603", a: "#FFAF2E", b: "#FF7A3D", c: "#FF4D5E", d: "#FFD98A" }, acid: { n: "Acide", bg: "#040A06", a: "#A8E63C", b: "#43E08B", c: "#25D4EE", d: "#E4FF7A" }, plasma: { n: "Plasma", bg: "#08040F", a: "#E45CFF", b: "#8F7CFF", c: "#25D4EE", d: "#FF6FB1" }, ocean: { n: "Océan", bg: "#02080C", a: "#19B8A6", b: "#4D8DFF", c: "#25D4EE", d: "#7CE8D0" }, steel: { n: "Acier", bg: "#070A0E", a: "#9FB2C8", b: "#5F7288", c: "#25D4EE", d: "#E6EEF9" } },
-    MODES: [["nebula", "NEBULA"], ["flux", "FLUX"], ["grid", "GRILLE"], ["radar", "RADAR"], ["scope", "SCOPE"], ["tunnel", "TUNNEL"]],
-    PRESETS: { "Nebula or": { mode: "nebula", theme: "diag", speed: 80, glow: 66 }, "Acide rapide": { mode: "tunnel", theme: "acid", speed: 140, glow: 62 }, "Radar atelier": { mode: "radar", theme: "acid", speed: 85, glow: 70 }, "Scope 4 cyl": { mode: "scope", theme: "acid", speed: 130, turb: 52 }, "Acier calme": { mode: "grid", theme: "steel", speed: 60, glow: 34 } },
-    targets: [], raf: 0, t: 0, last: 0, running: false, fails: 0,
-    pal: function () { if (this.P.useCustom) { var c = this.P.custom || {}; return { n: "Perso", bg: str(c.bg, "#04070D"), a: str(c.a, "#FFD60A"), b: str(c.b, "#25D4EE"), c: str(c.c, "#E45CFF"), d: str(c.d, "#43E08B") }; } return this.TH[this.P.theme] || this.TH.diag; },
-    init: function () { var cv = $("#bgc"); if (cv) { var cx = safe("ctx", function () { return cv.getContext("2d"); }, null); if (cx) this.targets.push({ cv: cv, ctx: cx, sc: 0.5, W: 0, H: 0, st: null, key: "" }); } this.resize(); var s = this; window.addEventListener("resize", deb(function () { s.resize(); }, 150)); D.addEventListener("visibilitychange", function () { if (D.hidden) s.stop(); else if (s.P.run) s.start(); }); this.apply(); },
-    attach: function (cv) { this.targets = this.targets.filter(function (t) { return t.cv.id === "bgc"; }); if (cv) { var cx = safe("c2", function () { return cv.getContext("2d"); }, null); if (cx) this.targets.push({ cv: cv, ctx: cx, sc: 1, W: 0, H: 0, st: null, key: "", pv: true }); } this.resize(); if (this.P.run) this.start(); else this.drawAll(); },
-    detach: function () { this.targets = this.targets.filter(function (t) { return !t.pv; }); },
-    resize: function () { var d = Math.min(window.devicePixelRatio || 1, this.P.quality === "eco" ? 1 : 1.5); this.targets.forEach(function (t) { var w = t.pv ? (t.cv.clientWidth || 640) : window.innerWidth, h = t.pv ? (t.cv.clientHeight || 330) : window.innerHeight; t.W = Math.max(1, w); t.H = Math.max(1, h); t.cv.width = Math.round(t.W * d); t.cv.height = Math.round(t.H * d); safe("tr", function () { t.ctx.setTransform(d, 0, 0, d, 0, 0); }); t.key = ""; }); this.drawAll(); },
-    set: function (k, v) { this.P[k] = v; if (k === "quality") this.resize(); if ("mode count scale density".indexOf(k) > -1) this.targets.forEach(function (t) { t.key = ""; }); this.fx(); if (k === "run") { if (v) this.start(); else this.stop(); } this.drawAll(); save(); this.sync(); },
-    setCustom: function (k, v) { if (!this.P.custom) this.P.custom = {}; this.P.custom[k] = v; this.P.useCustom = true; this.drawAll(); save(); this.sync(); },
-    randomize: function () { var ms = this.MODES.map(function (m) { return m[0]; }), ts = Object.keys(this.TH), R = Math.random; this.P.mode = ms[Math.floor(R() * ms.length)]; this.P.theme = ts[Math.floor(R() * ts.length)]; this.P.speed = 40 + Math.round(R() * 140); this.P.glow = 20 + Math.round(R() * 75); this.P.count = 60 + Math.round(R() * 240); this.P.dir = R() < 0.5 ? 1 : -1; this.apply(); this.resize(); save(); },
-    reset: function () { this.P = { mode: "nebula", theme: "diag", useCustom: false, custom: { bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" }, density: 64, count: 150, speed: 100, turb: 38, scale: 66, glow: 60, blur: 0, stroke: 1.4, drift: 40, dir: 1, quality: "std", grid: true, run: true, bg: true }; this.apply(); this.resize(); save(); },
-    fx: function () { var bc = $("#bgc"); if (bc) { bc.style.opacity = this.P.bg ? "1" : "0"; bc.style.filter = this.P.blur ? "blur(" + this.P.blur + "px)" : "none"; } },
-    apply: function () { this.fx(); this.targets.forEach(function (t) { t.key = ""; }); if (this.P.run && !D.hidden) this.start(); else { this.stop(); this.drawAll(); } this.sync(); },
-    start: function () { if (this.running || !this.targets.length) return; this.running = true; this.last = performance.now(); var s = this; var loop = function (n) { if (!s.running) return; var dt = Math.min(0.05, (n - s.last) / 1000); s.last = n; s.t += dt * (s.P.speed / 100) * s.P.dir; s.drawAll(); s.raf = requestAnimationFrame(loop); }; this.raf = requestAnimationFrame(loop); },
-    stop: function () { this.running = false; cancelAnimationFrame(this.raf); },
-    mk: function (t) { var I = this.P.density / 100, n = Math.round(clamp(this.P.count * (t.W * t.H) / (1280 * 720), 12, 300) * t.sc), i, p = [], bl = [], ln = []; for (i = 0; i < n; i++) p.push({ x: Math.random() * t.W, y: Math.random() * t.H, vx: (0.2 + Math.random() * 0.8) * (Math.random() < 0.5 ? -1 : 1), vy: (Math.random() - 0.5) * 0.4, r: 0.8 + Math.random() * 1.9, ph: Math.random() * 6.28, k: Math.floor(Math.random() * 4) }); for (i = 0; i < 16 * I + 5; i++) bl.push({ a: Math.random() * 6.28, d: 0.14 + Math.random() * 0.82, h: 0 }); for (i = 0; i < 9 * I + 3; i++) ln.push({ h: Math.random() < 0.5, pos: Math.random(), sp: 0.001 + Math.random() * 0.002, o: Math.random() }); return { p: p, bl: bl, ln: ln }; },
-    drawAll: function () { var s = this; this.targets.forEach(function (t) { if (!t.W || !t.H) return; if (!t.pv && !s.P.bg) return; var k = [s.P.mode, s.P.count, s.P.scale, t.W, t.H].join("|"); if (t.key !== k) { t.st = s.mk(t); t.key = k; } try { s.draw(t.ctx, t.W, t.H, s.t, s.P, t.st, s.pal(), t.sc); } catch (e) { s.fails++; if (s.fails > 3) { s.P.mode = "grid"; s.fails = 0; t.key = ""; } } }); },
-    draw: function (c, W, H, t, P, st, TH, sc) {
-      var I = P.density / 100, TB = P.turb / 100, G = P.glow / 100, LW = P.stroke, DR = 0.2 + P.drift / 100, SP = P.speed / 100, cols = [TH.a, TH.b, TH.c, TH.d], i, j;
-      function hx(a) { return clamp(Math.round(a * 255), 0, 255).toString(16).padStart(2, "0"); }
-      function glow(v) { c.shadowColor = v; c.shadowBlur = G * 16; } function ng() { c.shadowBlur = 0; }
-      c.globalCompositeOperation = "source-over"; c.globalAlpha = 1; c.fillStyle = P.mode === "scope" ? TH.bg + "2E" : TH.bg; c.fillRect(0, 0, W, H); c.lineWidth = LW;
-      if (P.grid && P.mode !== "nebula") { var s0 = Math.max(18, P.scale), o0 = (t * 9 * DR) % s0; c.strokeStyle = TH.a + "12"; c.beginPath(); for (i = -o0; i < W + s0; i += s0) { c.moveTo(i, 0); c.lineTo(i, H); } for (j = -o0 * 0.6; j < H + s0; j += s0) { c.moveTo(0, j); c.lineTo(W, j); } c.stroke(); }
-      var pts = arr(st && st.p);
-      if (P.mode === "nebula") { c.globalCompositeOperation = "lighter"; for (i = 0; i < 4; i++) { var bx = W * (0.3 + 0.4 * Math.sin(t * 0.2 * DR + i * 1.7)), by = H * (0.3 + 0.4 * Math.cos(t * 0.16 * DR + i)), br = Math.min(W, H) * 0.35; var gg = c.createRadialGradient(bx, by, 0, bx, by, br); gg.addColorStop(0, cols[i % 4] + hx(0.18 * I + 0.05)); gg.addColorStop(1, cols[i % 4] + "00"); c.fillStyle = gg; c.fillRect(0, 0, W, H); } c.globalCompositeOperation = "source-over"; for (i = 0; i < pts.length; i += 3) { var d = pts[i]; d.ph += 0.02 * SP; d.y -= 0.12 * SP * DR; if (d.y < -4) d.y = H + 4; c.fillStyle = TH.d + hx(0.15 * I + 0.04); c.fillRect(d.x, d.y, d.r, d.r); } }
-      else if (P.mode === "flux") { for (i = 0; i < pts.length; i++) { var p = pts[i]; p.x += p.vx * SP * 1.7 + Math.sin(t * 0.6 + p.ph) * TB * 0.7; p.y += p.vy * SP * 1.7; if (p.x < -12) p.x = W + 12; if (p.x > W + 12) p.x = -12; if (p.y < -12) p.y = H + 12; if (p.y > H + 12) p.y = -12; } var R = Math.max(48, P.scale * 1.4), R2 = R * R; for (i = 0; i < pts.length; i++) for (j = i + 1; j < pts.length; j++) { var a = pts[i], b = pts[j], dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy; if (d2 < R2) { c.strokeStyle = TH.a + hx((1 - d2 / R2) * 0.14 * I); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); } } for (i = 0; i < pts.length; i++) { var q = pts[i]; glow(cols[q.k]); c.fillStyle = cols[q.k]; c.globalAlpha = 0.7 * I + 0.15; c.beginPath(); c.arc(q.x, q.y, q.r, 0, 6.283); c.fill(); c.globalAlpha = 1; ng(); } }
-      else if (P.mode === "grid") { var ln = arr(st && st.ln); for (i = 0; i < ln.length; i++) { var l = ln[i]; l.o = (l.o + l.sp * SP * 2 + 1) % 1; var px = l.h ? W * l.o : H * l.o; glow(TH.a); c.fillStyle = TH.a + "CC"; if (l.h) c.fillRect(px, l.pos * H, 26, LW + 1); else c.fillRect(l.pos * W, px, LW + 1, 26); ng(); } for (i = 0; i < pts.length; i += 2) { var z = pts[i]; z.ph += 0.02 * SP; c.strokeStyle = TH.a + hx(0.25 * I); c.beginPath(); c.moveTo(z.x - 5, z.y); c.lineTo(z.x + 5, z.y); c.moveTo(z.x, z.y - 5); c.lineTo(z.x, z.y + 5); c.stroke(); } }
-      else if (P.mode === "radar") { var cx = W * 0.6, cy = H * 0.45, RR = Math.min(W, H) * 0.4, ang = (t * 0.8 * SP) % 6.283; c.strokeStyle = TH.a + "22"; for (i = 1; i <= 4; i++) { c.beginPath(); c.arc(cx, cy, RR * i / 4, 0, 6.283); c.stroke(); } glow(TH.a); c.strokeStyle = TH.a; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(ang) * RR, cy + Math.sin(ang) * RR); c.stroke(); ng(); var bl = arr(st && st.bl); for (i = 0; i < bl.length; i++) { var bp = bl[i]; var da = ((ang - bp.a) % 6.283 + 6.283) % 6.283; if (da < 0.07) bp.h = 1; bp.h *= 0.986; if (bp.h > 0.02) { c.fillStyle = TH.d + hx(bp.h); c.beginPath(); c.arc(cx + Math.cos(bp.a) * RR * bp.d, cy + Math.sin(bp.a) * RR * bp.d, 3, 0, 6.283); c.fill(); } } }
-      else if (P.mode === "scope") { for (var k2 = 0; k2 < 4; k2++) { var base = H * (k2 + 0.6) / 4.6, amp = H / 12.4, col = cols[k2]; glow(col); c.strokeStyle = col; c.beginPath(); for (i = 0; i <= W; i += 3) { var u = i / W * 12 + t * 1.6 * SP + k2 * 1.3, y = base + Math.sin(u) * amp * 0.6 + Math.sin(u * 3.1 + k2) * amp * 0.28 * TB; if (i) c.lineTo(i, y); else c.moveTo(i, y); } c.stroke(); ng(); } }
-      else { var cx2 = W / 2, cy2 = H / 2, mR = Math.max(W, H) * 0.7; for (i = 0; i < 12; i++) { var zz = ((i / 12) + t * 0.06 * SP * DR) % 1; if (zz < 0) zz += 1; var rr = mR * (0.04 + zz * zz); c.strokeStyle = cols[i % 4] + hx(zz * 0.5 * I + 0.05); c.lineWidth = LW + zz; c.beginPath(); for (j = 0; j <= 6; j++) { var ta = j * 1.047 + zz * 0.6; var tx = cx2 + Math.cos(ta) * rr, ty = cy2 + Math.sin(ta) * rr * 0.72; if (j) c.lineTo(tx, ty); else c.moveTo(tx, ty); } c.stroke(); } c.lineWidth = LW; }
-      c.globalCompositeOperation = "source-over"; c.globalAlpha = 1;
-    },
-    label: function (k, v) { var u = { density: "%", speed: "%", turb: "%", glow: "%", scale: " px", stroke: " px", blur: " px", drift: "%", count: "" }; return ((k === "stroke" || k === "blur") ? num(v, 0).toFixed(1) : Math.round(num(v, 0))) + (u[k] || ""); },
-    sync: function () { var P = this.P, rb = $("#runb"); if (rb) { rb.innerHTML = ic(P.run ? "pause" : "play"); rb.classList.toggle("on", P.run); } $$(".mb").forEach(function (b) { b.classList.toggle("on", b.dataset.m === P.mode); }); $$(".pbth").forEach(function (b) { b.classList.toggle("on", !P.useCustom && b.dataset.t === P.theme); }); $$("[data-p]").forEach(function (el) { var k = el.dataset.p, v = P[k]; if (el.type === "checkbox") el.checked = !!v; else if (el !== D.activeElement) el.value = v; var o = $("[data-pv='" + k + "']"); if (o) o.textContent = WP.label(k, v); }); $$("[data-c]").forEach(function (el) { if (el !== D.activeElement) el.value = (P.custom || {})[el.dataset.c] || "#000000"; }); var h = $("#hud"); if (h) h.innerHTML = "<span>" + P.mode.toUpperCase() + "</span><span>" + esc(this.pal().n) + "</span><span>" + (P.run ? "LIVE" : "PAUSE") + "</span>"; }
+/* ---------- son & toasts & modales ---------- */
+var PREF = { sound: true };
+var AUC = { ctx: null };
+function beep(k) {
+  if (!PREF.sound) { return; }
+  safe("audio", function () {
+    var C = window.AudioContext || window.webkitAudioContext;
+    if (!C) { return; }
+    AUC.ctx = AUC.ctx || new C();
+    var c = AUC.ctx, t = c.currentTime;
+    function p(f0, f1, d, ty, g, dt) {
+      dt = dt || 0;
+      var o = c.createOscillator(), v = c.createGain();
+      o.type = ty;
+      o.frequency.setValueAtTime(f0, t + dt);
+      if (f1) { o.frequency.exponentialRampToValueAtTime(f1, t + dt + d); }
+      v.gain.setValueAtTime(0, t + dt);
+      v.gain.linearRampToValueAtTime(g, t + dt + 0.008);
+      v.gain.exponentialRampToValueAtTime(0.0001, t + dt + d);
+      o.connect(v);
+      v.connect(c.destination);
+      o.start(t + dt);
+      o.stop(t + dt + d + 0.03);
+    }
+    if (k === "tick") { p(1700, 1400, 0.045, "square", 0.03); }
+    else if (k === "ok") { p(660, 0, 0.09, "sine", 0.055); p(990, 0, 0.14, "sine", 0.055, 0.09); }
+    else if (k === "err") { p(150, 110, 0.2, "sawtooth", 0.06); }
+    else if (k === "imp") { p(520, 0, 0.08, "sine", 0.045); p(660, 0, 0.08, "sine", 0.045, 0.08); p(880, 0, 0.16, "sine", 0.05, 0.16); }
+    else if (k === "open") { p(320, 560, 0.09, "sine", 0.045); }
+    else if (k === "close") { p(520, 300, 0.08, "sine", 0.035); }
+  }, null);
+}
+function toast(type, title, msg, undo) {
+  var box = $("#ts");
+  if (!box) { return; }
+  while (box.children.length >= 3) { box.removeChild(box.firstChild); }
+  var el = D.createElement("div");
+  el.className = "to " + type;
+  var h = ic({ ok: "check", err: "alert", warn: "alert", info: "info" }[type] || "info");
+  h += "<div style='flex:1;min-width:0'><b>" + esc(title) + "</b>";
+  if (msg) { h += "<p>" + esc(msg) + "</p>"; }
+  h += "</div>";
+  if (undo) { h += "<button class='btn xs amb' data-act='undo'>Annuler</button>"; }
+  h += "<span class='pg' style='animation-duration:" + (undo ? 8 : 4.6) + "s'></span>";
+  el.innerHTML = h;
+  box.appendChild(el);
+  var kill = function () {
+    el.classList.add("out");
+    setTimeout(function () {
+      if (el.parentNode) { el.parentNode.removeChild(el); }
+    }, 260);
   };
+  el._t = setTimeout(kill, undo ? 8000 : 4600);
+  el.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest("[data-act=undo]")) {
+      clearTimeout(el._t);
+      kill();
+    }
+  });
+}
+var modalOpen = false;
+function openModal(html, cls) {
+  var r = $("#md");
+  if (!r) { return; }
+  r.innerHTML = "<div class='ms' data-act='mscrim'><div class='mo " + (cls || "") + "'>" + html + "</div></div>";
+  requestAnimationFrame(function () { r.classList.add("on"); });
+  D.body.classList.add("lock");
+  modalOpen = true;
+  beep("open");
+}
+function closeModal() {
+  var r = $("#md");
+  if (!r || !r.innerHTML) { return; }
+  r.classList.remove("on");
+  modalOpen = false;
+  D.body.classList.remove("lock");
+  setTimeout(function () {
+    if (!modalOpen) { r.innerHTML = ""; }
+  }, 220);
+  beep("close");
+}
+function confirmModal(t, m, a, l) {
+  var h = "<div class='mh'>" + ic("alert", "color:#FFAF2E") + "<h3>" + esc(t) + "</h3>";
+  h += "<button class='tb' data-act='mclose'>" + ic("x") + "</button></div>";
+  h += "<div class='mb2'><p class='muted'>" + esc(m) + "</p></div>";
+  h += "<div class='mf'><button class='btn ghost' data-act='mclose'>Annuler</button>";
+  h += "<button class='btn dgr' data-act='" + a + "'>" + esc(l || "Confirmer") + "</button></div>";
+  openModal(h, "slim");
+}
 
-  var SEED = null, DB = { brands: [], models: [], engines: [], faults: [], tsb: [] }, AUDIT = [], UNDO = null, TESTS = [], IVIC = {}, FC = {}, TC = {}, MIDX = {}, BIDX = {}, EIDX = {}, IMPORT = null, FIXES = 0, LASTSAVE = 0, DIRTY = false;
-  var META = { counts: { b: 0, m: 0, e: 0, f: 0, t: 0, rc: 0, fam: 0, dom: 0 }, links: 0, corr: 0, integ: { err: [], ok: true, pct: 100 }, size: 0, byBrand: {}, regions: {}, cover: 0, perModel: {} };
-  var MODE = null, TIER = null, TIER_TS = 0, REG = { users: [], live: false, rev: 0, log: [], tierOpen: true, tierKick: 0 }, CH = null, GATE = null;
-  var S = { view: "bord", sel: { b: "", m: "", e: "" }, f: { q: "", fuel: [], region: "", sort: "brand" }, shown: 48, tech: { tab: "faults", q: "", sev: "", brand: "", model: "", phase: "", dom: "", km: "", region: "" }, adm: { tab: "files", mega: "" }, calc: { km: 60000, year: 2021, sev: 1 }, drawer: null, omni: { q: "", hits: [], idx: -1 }, tf: "" };
-  window.MD_STATE = S;
-  function isAdmin() { return MODE === "admin"; }
-  function isTier() { return MODE === "tier"; }
-  function regLoad() { var r = safe("reg", function () { return JSON.parse(STORE.get(AKEY)); }, null); if (!r || !Array.isArray(r.users)) r = { users: [], live: false, rev: 0, log: [] }; if (!Array.isArray(r.log)) r.log = []; if (r.tierOpen === undefined) r.tierOpen = true; REG = r; return r; }
-  function regSave() { STORE.set(AKEY, JSON.stringify(REG)); bcast({ t: "reg" }); }
-  function bcast(m) { try { if (CH) CH.postMessage(m); } catch (e) {} }
-  function regLog(a) { REG.log.unshift({ ts: Date.now(), a: a }); if (REG.log.length > 80) REG.log.pop(); }
-  function tierSession() { if (!TIER) return null; var u = null; arr(REG.users).forEach(function (x) { if (x && x.id === TIER) u = x; }); return u; }
-  function applyTier() { var raw = STORE.get(PKEY); if (!raw) return false; return safe("pub", function () { var d = JSON.parse(raw); if (d && d.db && arr(d.db.engines).length) { DB = d.db; invalidate(); normalize(DB); recompute(); return true; } return false; }, false); }
-  function invalidate() { FC = {}; TC = {}; IVIC = {}; }
+/* ---------- constantes ---------- */
+var PWD = "Kevin83600";
+var TPWD = "expert83";
+var KEY = "mecadata_v17";
+var AKEY = "md_access_v17";
+var PKEY = "md_pub_v17";
+var AKEY2 = "md_auto_v17";
+var YMAX = 2027;
+var KMMAX = 200000;
+var LEGACY = ["mecadata_v72", "mecadata_v8", "mecadata_v9", "mecadata_v10", "mecadata_v11", "mecadata_v12", "mecadata_v15", "md_access_v8", "md_access_v9", "md_access_v10", "md_access_v11", "md_access_v12", "md_access_v15", "md_pub_v9", "md_pub_v10", "md_pub_v11", "md_pub_v12", "md_pub_v15", "md_auto_v11", "md_auto_v12", "md_auto_v15", "md_adm", "md_boot"];
+var PURGED = { local: 0, session: 0, caches: 0, sw: 0, done: false };
+function purgeCache(full) {
+  var n = 0;
+  LEGACY.forEach(function (k) {
+    if (STORE.get(k) !== null) { STORE.del(k); n++; }
+  });
+  if (STORE.get(KEY) !== null) { STORE.del(KEY); n++; }
+  if (STORE.get(PKEY) !== null) { STORE.del(PKEY); n++; }
+  if (full && STORE.get(AKEY) !== null) { STORE.del(AKEY); n++; }
+  PURGED.local = n;
+  var s = 0;
+  try {
+    if (window.sessionStorage) {
+      s = sessionStorage.length;
+      sessionStorage.clear();
+    }
+  } catch (e) {
+    s = 0;
+  }
+  PURGED.session = s;
+  safe("caches", function () {
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (ks) {
+        PURGED.caches = arr(ks).length;
+        arr(ks).forEach(function (k) {
+          safe("cd", function () { caches.delete(k); }, null);
+        });
+      }).catch(function () {});
+    }
+  }, null);
+  safe("sw", function () {
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then(function (rs) {
+        PURGED.sw = arr(rs).length;
+        arr(rs).forEach(function (r) {
+          safe("ur", function () { r.unregister(); }, null);
+        });
+      }).catch(function () {});
+    }
+  }, null);
+  PURGED.done = true;
+  return PURGED;
+}
+function purgeLabel() {
+  return PURGED.local + " locale(s) · " + PURGED.session + " session · " + PURGED.caches + " cache(s) PWA · " + PURGED.sw + " SW";
+}
 
-  function mkEng(n, mid, code, fam, label, fuel, disp, hp, nm, y0, y1, gb) { fuel = nfuel(fuel); var a = num(y0, 2017), b = num(y1, 2027); if (a > b) { var t = a; a = b; b = t; } hp = clamp(num(hp, 100), 1, 3000); return { id: "E" + String(n).padStart(4, "0"), m: [mid], code: str(code, "GEN"), fam: str(fam, str(code, "GEN")), label: str(label, "Motorisation"), fuel: fuel, disp: num(disp, 0), hp: hp, nm: num(nm, 200), kw: Math.round(hp * 0.7355), y: [a, b], gb: str(gb, "BVM"), norm: fuel === "b" ? "ZE" : (a >= 2024 ? "Euro 6e" : "Euro 6"), cyl: fuel === "b" ? "ÉLEC" : (num(disp, 0) > 3400 ? "V8+" : (num(disp, 0) < 1100 ? "L3" : "L4")), asp: fuel === "b" ? "—" : "Turbo", inj: fuel === "b" ? "—" : (fuel === "d" ? "Common Rail" : "Injection directe") }; }
-  function build(R) {
-    var O = { brands: [], models: [], engines: [], faults: [], tsb: [] };
-    arr(R.br).forEach(function (b) { if (!b || !b[0]) return; O.brands.push({ id: str(b[0]), n: str(b[1], b[0]), pays: str(b[2], "—"), grp: str(b[3], "—"), region: str(b[4], regionOf(b[2])) }); });
-    var md = R.md || {}, me = R.me || {};
-    Object.keys(md).forEach(function (bid) { arr(md[bid]).forEach(function (m) { if (!m || !m[0]) return; var y = pair([m[1], m[2]], [2017, 2027]); O.models.push({ id: bid + "-" + slug(m[0]), b: bid, n: str(m[0]), y: y[0] > y[1] ? [y[1], y[0]] : y, seg: str(SEGS[clamp(num(m[3], 2), 0, 13)], "Compacte"), phase: clamp(num(m[4], 1), 1, 12) }); }); });
-    var n = 0;
-    O.models.forEach(function (m) { arr(me[m.id]).forEach(function (e) { if (!e) return; n++; O.engines.push(mkEng(n, m.id, e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[8], e[9], e[7])); }); });
-    arr(R.ft).forEach(function (f, i) { f = arr(f); if (!f.length || !f[0]) return; var c = costOf([f[13], f[14]]); var yy = yOf([f[6], f[7]]); var kk = kmOf([f[8], f[9]]); O.faults.push({ id: "F" + String(i + 1).padStart(3, "0"), t: str(f[0]), fam: list(f[1]), mt: list(f[2]), ph: list(f[3]), sev: nsev(f[4]), freq: nfreq(f[5]), y: yy, km: kk, sym: list(f[10]), cause: str(f[11], "Cause à expertiser"), fix: str(f[12], "Diagnostic valise requis"), cost: c, status: str(f[15], "Surveillance"), dom: str(f[16], "Moteur") }); });
-    arr(R.ts).forEach(function (t, i) { t = arr(t); if (!t.length || !t[0]) return; var d = str(t[6], "2026-01"); if (!/^\d{4}-\d{2}$/.test(d)) d = "2026-01"; O.tsb.push({ id: "T" + String(i + 1).padStart(3, "0"), ref: str(t[0]), b: list(t[1]), fam: list(t[2]), mt: list(t[3]), ph: list(t[4]), t: str(t[5], "Bulletin"), date: d, cat: str(t[7], "Moteur"), sev: nsev(t[8]), sum: str(t[9], "Bulletin constructeur."), act: str(t[10], "Appliquer la procédure constructeur."), dom: str(t[11], str(t[7], "Moteur")) }); });
-    return O;
-  }
-  function normalize(d) {
-    var fx = 0; if (!d || typeof d !== "object") return 1;
-    FILES.forEach(function (f) { if (!Array.isArray(d[f[0]])) { d[f[0]] = []; fx++; } });
-    var bs = {}, ms = {}, seen = {};
-    d.brands = arr(d.brands).filter(function (b) { if (!b || !b.id || seen["b" + b.id]) { fx++; return false; } seen["b" + b.id] = 1; bs[b.id] = 1; b.n = str(b.n, b.id); if (!REGIONS[b.region]) { b.region = regionOf(b.pays); fx++; } return true; });
-    d.models = arr(d.models).filter(function (m) { if (!m || !m.id || !bs[m.b] || seen["m" + m.id]) { fx++; return false; } seen["m" + m.id] = 1; ms[m.id] = 1; m.n = str(m.n, "Modèle"); m.y = yOf(m); m.phase = clamp(num(m.phase, 1), 1, 12); m.seg = str(m.seg, "Compacte"); return true; });
-    d.engines = arr(d.engines).filter(function (e) { if (!e || !e.id) { fx++; return false; } e.m = list(e.m).filter(function (x) { return ms[x]; }); if (!e.m.length) { fx++; return false; } if (seen["e" + e.id]) { e.id = uid("E"); fx++; } seen["e" + e.id] = 1; e.code = str(e.code, "GEN"); e.fam = str(e.fam, e.code); e.label = str(e.label, "Motorisation"); e.fuel = nfuel(e.fuel); e.hp = clamp(num(e.hp, 100), 1, 3000); e.nm = num(e.nm, 200); e.kw = Math.round(e.hp * 0.7355); e.y = yOf(e); e.gb = str(e.gb, "BVM"); return true; });
-    d.faults = arr(d.faults).filter(function (f) { if (!f || !f.id) { fx++; return false; } if (seen["f" + f.id]) { f.id = uid("F"); fx++; } seen["f" + f.id] = 1; f.t = str(f.t, "Fiche"); f.sev = nsev(f.sev); f.freq = nfreq(f.freq); f.fam = list(f.fam); f.mt = list(f.mt); f.ph = list(f.ph); f.sym = list(f.sym); if (!f.sym.length) f.sym = ["Symptôme à confirmer"]; f.y = yOf(f); f.km = kmOf(f); f.cost = costOf(f); f.cause = str(f.cause, "—"); f.fix = str(f.fix, "—"); f.dom = str(f.dom, "Moteur"); f.status = str(f.status, "Surveillance"); return true; });
-    d.tsb = arr(d.tsb).filter(function (t) { if (!t || !t.id) { fx++; return false; } if (seen["t" + t.id]) { t.id = uid("T"); fx++; } seen["t" + t.id] = 1; t.ref = str(t.ref, t.id); t.t = str(t.t, "Bulletin"); t.sev = nsev(t.sev); t.b = list(t.b).filter(function (x) { return bs[x]; }); t.fam = list(t.fam); t.mt = list(t.mt); t.ph = list(t.ph); t.date = str(t.date, "2026-01"); if (!/^\d{4}-\d{2}$/.test(t.date)) t.date = "2026-01"; t.cat = str(t.cat, "Moteur"); t.dom = str(t.dom, t.cat); t.sum = str(t.sum, "—"); t.act = str(t.act, "—"); return true; });
-    return fx;
-  }
-  function reindex() { MIDX = {}; BIDX = {}; EIDX = {}; arr(DB.models).forEach(function (m) { MIDX[m.id] = m; }); arr(DB.brands).forEach(function (b) { BIDX[b.id] = b; }); arr(DB.engines).forEach(function (e) { EIDX[e.id] = e; }); }
-  function brandOf(e) { var m = e && MIDX[arr(e.m)[0]]; return m ? (BIDX[m.b] || null) : null; }
-  function modelOf(e) { return (e && MIDX[arr(e.m)[0]]) || null; }
-  function engName(e) { var m = modelOf(e), b = brandOf(e); return ((b ? b.n + " " : "") + (m ? m.n + " — " : "") + str(e && e.label)).trim(); }
-  function tokHit(l, name) { var a = arr(l); if (!a.length) return false; var n = nk(name); for (var i = 0; i < a.length; i++) { var t = nk(a[i]); if (t === "*" || (t && n.indexOf(t) > -1)) return true; } return false; }
-  function phaseOk(ph, m) { var a = arr(ph); return !a.length || a.indexOf("*") > -1 || a.indexOf(String(m && m.phase)) > -1; }
-  function fApply(f, e, m) { return !!(f && e && m) && (arr(f.fam).indexOf(e.fam) > -1 || tokHit(f.mt, m.n)) && phaseOk(f.ph, m); }
-  function tApply(t, e, m) { return !!(t && e && m) && (arr(t.fam).indexOf(e.fam) > -1 || tokHit(t.mt, m.n) || arr(t.b).indexOf(m.b) > -1) && phaseOk(t.ph, m); }
-  function faultsFor(e) { if (!e || !e.id) return []; if (FC[e.id]) return FC[e.id]; var m = modelOf(e); var out = m ? arr(DB.faults).filter(function (f) { return fApply(f, e, m); }).map(function (f) { var g = clone(f); g.active = ov(g.y, yOf(e)) && ov(g.y, yOf(m)); return g; }).sort(function (a, b) { var d = (b.active ? 1 : 0) - (a.active ? 1 : 0); return d || (SV[b.sev].w - SV[a.sev].w); }) : []; FC[e.id] = out; return out; }
-  function tsbFor(e) { if (!e || !e.id) return []; if (TC[e.id]) return TC[e.id]; var m = modelOf(e); var out = m ? arr(DB.tsb).filter(function (t) { return tApply(t, e, m); }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); }) : []; TC[e.id] = out; return out; }
-  function isRecall(t) { return !!t && (t.cat === "Rappel" || /^RPL-/.test(String(t.ref))); }
-  function ivi(e) { if (!e || !e.id) return 0; if (IVIC[e.id] !== undefined) return IVIC[e.id]; var s = 0; faultsFor(e).forEach(function (f) { s += (SV[f.sev].w * (FQ[f.freq] || 1)) * (f.active ? 1 : 0.25); }); s = clamp(Math.round(s), 0, 100); IVIC[e.id] = s; return s; }
-  function engForFault(f) { return arr(DB.engines).filter(function (e) { return fApply(f, e, modelOf(e)); }); }
-  function engForTsb(t) { return arr(DB.engines).filter(function (e) { return tApply(t, e, modelOf(e)); }); }
-  function integrity() { var err = [], mi = {}, bi = {}, du = 0; arr(DB.models).forEach(function (m) { mi[m.id] = 1; }); arr(DB.brands).forEach(function (b) { bi[b.id] = 1; }); FILES.forEach(function (f) { var s = {}; arr(DB[f[0]]).forEach(function (x) { if (!x) return; if (s[x.id]) du++; s[x.id] = 1; }); }); if (du) err.push(du + " doublon(s)"); arr(DB.models).forEach(function (m) { if (!bi[m.b]) err.push("marque inconnue " + m.b); }); arr(DB.engines).forEach(function (e) { arr(e.m).forEach(function (i) { if (!mi[i]) err.push("orphelin " + e.id); }); }); return { err: err, ok: !err.length, pct: err.length ? Math.max(0, 100 - err.length * 7) : 100 }; }
-  function recompute() {
-    invalidate(); reindex();
-    var links = 0, corr = 0, bb = {}, doms = {}, fams = {}, regs = {}, pm = {};
-    arr(DB.engines).forEach(function (e) { var m = MIDX[arr(e.m)[0]]; fams[e.fam] = 1; links += arr(e.m).length; if (m) { bb[m.b] = (bb[m.b] || 0) + 1; pm[m.id] = (pm[m.id] || 0) + 1; } corr += faultsFor(e).length + tsbFor(e).length; });
-    arr(DB.brands).forEach(function (b) { regs[b.region] = (regs[b.region] || 0) + 1; });
-    arr(DB.faults).forEach(function (f) { links += arr(f.fam).length; doms[f.dom] = 1; });
-    arr(DB.tsb).forEach(function (t) { links += arr(t.b).length + arr(t.fam).length; doms[t.dom] = 1; });
-    var w = 0, tot = arr(DB.models).length;
-    Object.keys(pm).forEach(function (k) { if (pm[k] >= 2) w++; });
-    META = { counts: { b: arr(DB.brands).length, m: tot, e: arr(DB.engines).length, f: arr(DB.faults).length, t: arr(DB.tsb).length, rc: arr(DB.tsb).filter(isRecall).length, fam: Object.keys(fams).length, dom: Object.keys(doms).length }, links: links, corr: corr, integ: integrity(), size: Math.round(JSON.stringify(DB).length / 1024), byBrand: bb, regions: regs, cover: tot ? Math.round(w / tot * 100) : 0, perModel: pm };
-  }
-  function svcList() { var l = arr(RAW.svc).filter(function (s) { return s && num(s.base, 0) > 0 && arr(s.items).length; }); return l.length ? l : [SVC_FB]; }
-  function svcFor(e) { var l = svcList(), fam = str(e && e.fam), fuel = str(e && e.fuel, "e"), i, j; for (i = 0; i < l.length; i++) { var fs = arr(l[i].fams); if (fs.indexOf("*") > -1) continue; for (j = 0; j < fs.length; j++) if (fs[j] === fam) return l[i]; } for (i = 0; i < l.length; i++) if (arr(l[i].fams).indexOf("*") > -1 && l[i].fuel === fuel) return l[i]; for (i = 0; i < l.length; i++) if (arr(l[i].fams).indexOf("*") > -1) return l[i]; return SVC_FB; }
-  function buildPlan(e, m, b) { var s = svcFor(e), base = clamp(num(s.base, 20000), 5000, 40000), months = clamp(num(s.months, 12), 6, 48); var items = arr(s.items).filter(function (x) { return Array.isArray(x) && x[0]; }); if (!items.length) items = SVC_FB.items; var ctrl = arr(s.controls).filter(Boolean); if (!ctrl.length) ctrl = SVC_FB.controls; var dist = arr(s.dist).length >= 3 ? s.dist : SVC_FB.dist; var annual = Math.max(8000, Math.round(base * 12 / months)), visits = [], km, i; for (km = base; km <= KMMAX; km += base) { var ops = []; for (i = 0; i < items.length; i++) { var ik = num(items[i][1], 0), im = num(items[i][2], 0); if (ik > 0) { if (km % ik === 0) ops.push(str(items[i][0])); } else if (im > 0) { var st2 = Math.max(base, Math.round(annual * im / 12 / base) * base); if (st2 > 0 && km % st2 === 0) ops.push(str(items[i][0]) + " (" + im + " mois)"); } } var dk = num(dist[1], 0); if (dk > 0 && km >= dk && km - dk < base) ops.push(str(dist[0]) + " — REMPLACEMENT " + fmt(dk) + " km"); if (!ops.length) ops.push("Révision intermédiaire constructeur"); visits.push({ km: km, mo: Math.round(km / annual * 12), ops: ops, ctrl: ctrl.slice() }); } if (num(dist[1], 0) > KMMAX) visits.push({ km: num(dist[1], 0), mo: num(dist[2], 0), ops: [str(dist[0]) + " — REMPLACEMENT"], ctrl: ["Contrôle tension"] }); if (!visits.length) visits.push({ km: KMMAX, mo: 120, ops: ["Révision générale 200 000 km"], ctrl: ctrl.slice() }); visits.sort(function (a, b2) { return num(a.km, 0) - num(b2.km, 0); }); return { svc: s, visits: visits, base: base, months: months, brand: b || null, model: m || null, engine: e || null }; }
-  function lastKm(pl) { var v = arr(pl && pl.visits), l = v[v.length - 1]; return l ? num(l.km, 0) : 0; }
+var RAW = window.MD_RAW || { br: [], md: {}, me: {}, ft: [], ts: [], svc: [], cand: [], segs: [] };
+var SEGS = arr(RAW.segs).length ? RAW.segs : ["Citadine", "Micro-citadine", "Compacte", "SUV urbain", "SUV compact", "Berline", "Break", "Ludospace", "Utilitaire", "Coupé", "Roadster", "Sportive", "Monospace", "Pick-up"];
+var FU = {
+  e: { l: "Essence", c: "#FFAF2E" },
+  d: { l: "Diesel", c: "#4D8DFF" },
+  h: { l: "Hybride", c: "#43E08B" },
+  p: { l: "Hybride rechargeable", c: "#19B8A6" },
+  b: { l: "Électrique", c: "#E45CFF" },
+  g: { l: "GPL", c: "#A8E63C" }
+};
+var SV = {
+  critique: { w: 32, c: "#FF4D5E" },
+  majeure: { w: 18, c: "#FF7A3D" },
+  "modérée": { w: 9, c: "#FFAF2E" },
+  mineure: { w: 4, c: "#4D8DFF" },
+  info: { w: 0, c: "#25D4EE" }
+};
+var FQ = { "élevée": 1.25, moyenne: 1, faible: 0.7 };
+var REGIONS = { france: "France", europe: "Europe", asie: "Asie", chine: "Chine", amerique: "Amérique" };
+var FILES = [["brands", "Marques"], ["models", "Modèles"], ["engines", "Motorisations"], ["faults", "Pannes"], ["tsb", "TSB / Rappels"]];
+function nsev(v) {
+  var k = nk(v);
+  var m = { critique: "critique", majeure: "majeure", moderee: "modérée", mineure: "mineure", info: "info" };
+  return m[k] || (SV[v] ? v : "modérée");
+}
+function nfreq(v) {
+  var k = nk(v);
+  var m = { elevee: "élevée", moyenne: "moyenne", faible: "faible" };
+  return m[k] || (FQ[v] ? v : "moyenne");
+}
+function nfuel(v) {
+  var k = nk(v);
+  var m = { e: "e", essence: "e", d: "d", diesel: "d", h: "h", hybride: "h", p: "p", phev: "p", b: "b", ev: "b", electrique: "b", g: "g", gpl: "g" };
+  return m[k] || (FU[k] ? k : "e");
+}
+function regionOf(p) {
+  var k = nk(p);
+  if (k.indexOf("france") > -1) { return "france"; }
+  if (k.indexOf("chine") > -1) { return "chine"; }
+  if (k.indexOf("japon") > -1 || k.indexOf("coree") > -1 || k.indexOf("vietnam") > -1) { return "asie"; }
+  if (k.indexOf("etatsunis") > -1) { return "amerique"; }
+  return "europe";
+}
+function IVL(v) {
+  v = num(v, 0);
+  if (v >= 75) { return ["CRITIQUE", "#FF4D5E"]; }
+  if (v >= 50) { return ["ÉLEVÉ", "#FF7A3D"]; }
+  if (v >= 25) { return ["MODÉRÉ", "#FFAF2E"]; }
+  return ["FAIBLE", "#43E08B"];
+}
+var SVC_FB = {
+  key: "fb", fams: ["*"], fuel: "*", base: 20000, months: 12,
+  oil: ["5W-30 ACEA C3", 4.5], dist: ["Selon constructeur", 150000, 72],
+  items: [["Vidange huile + filtre", 20000, 12], ["Filtre habitacle", 20000, 12], ["Liquide de freins", 0, 24], ["Contrôle plaquettes", 20000, 12], ["Contrôle pneumatiques", 10000, 6]],
+  controls: ["Niveau huile", "Pression pneus", "Plaquettes", "Voyants"],
+  fluids: ["DOT4", "G12", "120", "2.4", "2.4", "R1234yf", "AGM 70Ah"]
+};
 
-  function saveNow(quiet) { if (!isAdmin()) return false; return safe("save", function () { STORE.set(KEY, JSON.stringify({ v: 15, db: DB, audit: AUDIT.slice(-60), prefs: PREF, wp: WP.P, ts: Date.now() })); LASTSAVE = Date.now(); DIRTY = false; updStor(); updateMeta(); if (!quiet) toast("ok", "Sauvegarde locale effectuée", fmt(META.counts.e) + " motorisations · " + META.size + " Ko"); return true; }, false); }
-  var save = deb(function () { saveNow(true); }, 350);
-  function markDirty() { if (isAdmin()) { DIRTY = true; save(); } }
-  function backupExport() { if (!isAdmin()) { toast("err", "Réservé admin"); return; } download("mecadata_sauvegarde_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ kind: "mecadata-backup", v: 15, ts: Date.now(), db: DB, prefs: PREF, wp: WP.P, auto: AUTO.st, audit: AUDIT.slice(-60) }, null, 2)); toast("ok", "Backup exporté", "Fichier JSON de sauvegarde locale."); beep("ok"); }
-  function backupRestore(obj) { if (!isAdmin()) { toast("err", "Réservé admin"); return; } if (!obj || !obj.db || !arr(obj.db.engines).length) { toast("err", "Backup invalide"); return; } snapshot("restore"); DB = obj.db; FIXES += normalize(DB); recompute(); if (obj.prefs) Object.keys(obj.prefs).forEach(function (k) { PREF[k] = obj.prefs[k]; }); if (obj.wp) Object.keys(obj.wp).forEach(function (k) { WP.P[k] = obj.wp[k]; }); saveNow(true); audit("bak", "Restauration backup"); updateMeta(); render(); toast("ok", "Backup restauré", fmt(META.counts.e) + " motorisations rechargées."); beep("imp"); }
-  function audit(t, m) { AUDIT.push({ ts: Date.now(), type: t, msg: m }); if (AUDIT.length > 150) AUDIT = AUDIT.slice(-150); }
-  function snapshot(l) { UNDO = { label: l, db: clone(DB) }; }
-  function doUndo() { if (!UNDO) return; DB = UNDO.db; UNDO = null; invalidate(); recompute(); markDirty(); updateMeta(); render(); toast("ok", "Action annulée"); }
-  function publish(auto) { if (!isAdmin()) return; REG.rev = num(REG.rev, 0) + 1; STORE.set(PKEY, JSON.stringify({ ts: Date.now(), rev: REG.rev, db: DB })); regLog("Diffusion rév " + REG.rev); regSave(); bcast({ t: "pub" }); if (!auto) toast("ok", "Diffusé aux tiers", "Révision " + REG.rev); }
-  function mutate(t, m) { FIXES += normalize(DB); recompute(); audit(t, m); markDirty(); if (REG.live && isAdmin()) publish(true); updateMeta(); render(); if (S.drawer) renderDrawer(); }
-
-  var AUTO = {
-    st: { last: 0, lastFull: 0, onLaunch: true, runs: 0, added: { m: 0, e: 0, f: 0, t: 0 }, log: [] },
-    SEEDS: [["renault", "Clio VI", 6, 2026, 2027, 0], ["peugeot", "208 III", 3, 2026, 2027, 0], ["vw", "ID.2", 1, 2025, 2027, 0], ["bmw", "iX3 Neue Klasse", 1, 2025, 2027, 4], ["mercedes", "CLA III", 1, 2025, 2027, 5], ["toyota", "C-HR III", 3, 2026, 2027, 3], ["hyundai", "Ioniq 3", 1, 2026, 2027, 2], ["kia", "EV2", 1, 2025, 2027, 3], ["byd", "Seal 06 DM-i", 1, 2025, 2027, 5], ["mg", "MGS6 EV", 1, 2026, 2027, 4], ["xiaomi", "YU7 Ultra", 2, 2026, 2027, 4], ["tesla", "Model 2", 1, 2026, 2027, 0]],
-    RISK: [["courroie humide bain huile", "Distribution", "critique"], ["chaîne distribution allongée", "Distribution", "critique"], ["batterie HV cellules LG", "Batterie HV", "critique"], ["ICCU chargeur 800V", "Charge", "majeure"], ["refroidisseur EGR fuite glycol", "Refroidissement", "critique"], ["pompe AdBlue SCR cristallisation", "Antipollution", "majeure"], ["FAP colmatage urbain", "Antipollution", "majeure"], ["dilution huile trajets courts", "Moteur", "majeure"]],
-    load: function () { var r = safe("auto", function () { return JSON.parse(STORE.get(AKEY2)); }, null); if (r && r.added) this.st = r; if (!this.st.added) this.st.added = { m: 0, e: 0, f: 0, t: 0 }; if (!Array.isArray(this.st.log)) this.st.log = []; return this.st; },
-    saveSt: function () { STORE.set(AKEY2, JSON.stringify(this.st)); },
-    log: function (m) { this.st.log.unshift({ ts: Date.now(), m: m }); if (this.st.log.length > 60) this.st.log.pop(); },
-    hasModel: function (b, n) { return arr(DB.models).some(function (m) { return m.b === b && nk(m.n) === nk(n); }); },
-    addModel: function (b, n, phase, y0, y1, seg) { if (!BIDX[b] || this.hasModel(b, n)) return null; var m = { id: b + "-" + slug(n), b: b, n: n, y: [y0, y1], seg: str(SEGS[seg], "Compacte"), phase: phase }; DB.models.push(m); this.st.added.m++; return m; },
-    addEngine: function (mid, src, hp, nm) { if (!MIDX[mid] || !src) return null; var dup = arr(DB.engines).some(function (e) { return arr(e.m).indexOf(mid) > -1 && e.fam === src.fam && e.hp === hp; }); if (dup) return null; var e2 = mkEng(arr(DB.engines).length + 1, mid, src.code, src.fam, src.label.replace(/\s\d+$/, "") + " " + hp, src.fuel, src.disp, hp, nm, src.y[0], src.y[1], src.gb); DB.engines.push(e2); this.st.added.e++; return e2; },
-    addFault: function (t, fams, mts, sev, dom, cause, fix) { var dup = arr(DB.faults).some(function (f) { return nk(f.t) === nk(t); }); if (dup) return null; var f = { id: uid("F"), t: t, fam: fams, mt: mts, ph: ["*"], sev: sev, freq: "moyenne", y: [2017, YMAX], km: [20000, 200000], sym: ["Voyant moteur", "Comportement anormal"], cause: cause, fix: fix, cost: [0, 0], status: "Veille automatique", dom: dom }; DB.faults.push(f); this.st.added.f++; return f; },
-    addTsb: function (ref, bs, mts, title, cat, sev, sum, act) { var dup = arr(DB.tsb).some(function (t) { return nk(t.ref) === nk(ref); }); if (dup) return null; var d = new Date(); var t = { id: uid("T"), ref: ref, b: bs, fam: [], mt: mts, ph: ["*"], t: title, date: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"), cat: cat, sev: sev, sum: sum, act: act, dom: cat }; DB.tsb.push(t); this.st.added.t++; return t; },
-    powers: function (cap) { var add = 0, lad = { e: [15, 25, 40], d: [20, 30], h: [15, 25], p: [20], b: [30, 60], g: [10] }, byModel = {}; arr(DB.engines).forEach(function (e) { var mid = arr(e.m)[0]; (byModel[mid] = byModel[mid] || []).push(e); }); Object.keys(byModel).forEach(function (mid) { if (cap && add >= cap) return; var byFam = {}; byModel[mid].forEach(function (e) { (byFam[e.fam] = byFam[e.fam] || []).push(e); }); Object.keys(byFam).forEach(function (fam) { if (cap && add >= cap) return; var g = byFam[fam].sort(function (a, b) { return a.hp - b.hp; }); if (g.length < 2) { var src = g[0], st = (lad[src.fuel] || [20])[0]; if (AUTO.addEngine(mid, src, Math.round(src.hp * (1 + st / 100)), Math.round(src.nm * (1 + st / 160)))) add++; } else { var lo = g[0], hi = g[g.length - 1]; if (hi.hp - lo.hp < 40) { var mid2 = Math.round((lo.hp + hi.hp) / 2 / 5) * 5; if (mid2 > lo.hp && mid2 < hi.hp && AUTO.addEngine(mid, lo, mid2, Math.round((lo.nm + hi.nm) / 2))) add++; } } }); }); return add; },
-    models: function (cap) { var add = 0; AUTO.SEEDS.forEach(function (s) { if (cap && add >= cap) return; if (!BIDX[s[0]]) return; var m = AUTO.addModel(s[0], s[1], s[2], s[3], s[4], s[5]); if (m) { add++; var src = arr(DB.engines).filter(function (e) { var mm = modelOf(e); return mm && mm.b === s[0]; })[0]; if (src) AUTO.addEngine(m.id, src, src.hp, src.nm); } }); arr(DB.models).slice().forEach(function (m) { if (cap && add >= cap) return; if (m.y[1] >= 2024 && m.phase < 6 && m.n.indexOf("Phase 2") < 0) { var nm2 = m.n + " Phase 2"; if (!AUTO.hasModel(m.b, nm2)) { var y0 = Math.min(YMAX - 1, Math.max(2024, m.y[1] - 1)); var m2 = AUTO.addModel(m.b, nm2, m.phase + 1, y0, YMAX, SEGS.indexOf(m.seg)); if (m2) { add++; arr(DB.engines).filter(function (e) { return arr(e.m).indexOf(m.id) > -1; }).slice(0, 3).forEach(function (e) { AUTO.addEngine(m2.id, e, e.hp, e.nm); }); } } } }); return add; },
-    faults: function (cap) { var add = 0, has = {}; arr(DB.faults).forEach(function (f) { arr(f.fam).forEach(function (x) { has[x] = 1; }); }); var fams = {}; arr(DB.engines).forEach(function (e) { fams[e.fam] = (fams[e.fam] || 0) + 1; }); Object.keys(fams).forEach(function (fam, idx) { if (cap && add >= cap) return; if (has[fam] || fams[fam] < 3) return; var risk = AUTO.RISK[idx % AUTO.RISK.length]; var mts = []; arr(DB.engines).forEach(function (e) { if (e.fam === fam) arr(e.m).forEach(function (mid) { var m = MIDX[mid]; if (m && mts.indexOf(m.n) < 0 && mts.length < 6) mts.push(m.n); }); }); if (AUTO.addFault("Veille auto — " + risk[0] + " (" + fam + ")", [fam], mts, risk[2], risk[1], "Risque documenté sur architecture comparable, surveillance déclenchée par le balayage automatique.", "Contrôle préventif à chaque révision, diagnostic valise et application du bulletin constructeur dès publication.")) add++; }); return add; },
-    tsb: function (cap) { var add = 0, has = {}; arr(DB.tsb).forEach(function (t) { arr(t.b).forEach(function (b) { has[b] = 1; }); }); arr(DB.brands).forEach(function (b) { if (cap && add >= cap) return; if (has[b.id]) return; var ms = arr(DB.models).filter(function (m) { return m.b === b.id; }).slice(0, 5).map(function (m) { return m.n; }); if (AUTO.addTsb("AUTO-" + b.id.toUpperCase() + "-12V", [b.id], ms, "Veille auto " + b.n + " — batterie 12V et gestion veille", "Batterie 12V", "modérée", "Balayage automatique : veille télématique et batterie 12V AGM/EFB à contrôler sur gamme " + b.n + ".", "Test batterie 12V, contrôle DC-DC, mise à jour gestion veille.")) add++; if (cap && add >= cap) return; if (AUTO.addTsb("RPL-AUTO-" + b.id.toUpperCase() + "-ADAS", [b.id], ms, "Veille auto " + b.n + " — calibration ADAS après vitrage", "ADAS", "majeure", "Balayage automatique : calibration caméra/radar obligatoire après remplacement de pare-brise sur gamme " + b.n + ".", "Calibration statique et dynamique après intervention vitrage.")) add++; }); return add; },
-    sweep: function (reason, full) { if (!isAdmin()) return { ok: false, total: 0 }; this.load(); var cap = full ? 0 : 400; var a1 = this.models(cap), a2 = this.powers(cap), a3 = this.faults(cap), a4 = this.tsb(cap); var total = a1 + a2 + a3 + a4; FIXES += normalize(DB); recompute(); this.st.runs++; this.st.last = Date.now(); if (full) this.st.lastFull = Date.now(); this.log(reason + " : +" + a1 + " modèles, +" + a2 + " mot., +" + a3 + " pannes, +" + a4 + " bulletins"); this.saveSt(); audit("auto", "Balayage " + reason + " : " + total); markDirty(); if (REG.live) publish(true); updateMeta(); return { ok: true, total: total, m: a1, e: a2, f: a3, t: a4 }; },
-    maybe: function () { this.load(); var now = Date.now(); if (now - num(this.st.lastFull, 0) > 30 * 86400000) { var r = this.sweep("cycle 30 jours", true); if (r.total) toast("ok", "Mise à jour auto 30 j", r.total + " complément(s)."); return r; } if (this.st.onLaunch && now - num(this.st.last, 0) > 6 * 3600000) { var r2 = this.sweep("lancement", false); if (r2.total) toast("info", "Recherche auto massive", r2.total + " complément(s)."); return r2; } return { ok: true, total: 0 }; }
-  };
-  window.MD_API = { db: function () { return DB; }, meta: function () { return META; }, isAdmin: isAdmin, isTier: isTier, mutate: mutate, publish: publish, sweep: function (f) { return AUTO.sweep(f ? "manuel complet" : "manuel", !!f); }, auto: AUTO, purge: purgeCache, save: saveNow, backup: backupExport, restore: backupRestore };
-
-  function sevTag(s) { s = nsev(s); return "<span class='sev " + (s === "modérée" ? "mode" : esc(s)) + "'>" + esc(s) + "</span>"; }
-  function fuelTag(f) { var x = FU[nfuel(f)] || { l: f, c: "#9FB2C8" }; return "<span class='fuel' style='--fc:" + x.c + "'>" + x.l + "</span>"; }
-  function iviPill(v) { var l = IVL(v); return "<span class='ivp' style='--ic:" + l[1] + "'><i></i>IVI " + num(v, 0) + "</span>"; }
-  function corrRow(e) { var F = FU[e.fuel] || { c: "#FFD60A" }, b = brandOf(e), m = modelOf(e); return "<button class='corr' style='--fc:" + F.c + "' data-act='openEng' data-id='" + esc(e.id) + "'><div style='min-width:0'><b>" + esc((b ? b.n : "") + " " + (m ? m.n : "")) + "</b><small>" + esc(e.label) + " · " + esc(e.code) + "</small></div><span class='hp'>" + e.hp + "</span></button>"; }
-  function faultCard(f, hist, full) { if (!f) return ""; var kk = kmOf(f), yy = yOf(f), cc = costOf(f), c = (SV[f.sev] || SV["modérée"]).c; var h = "<div class='fcard' style='--sc:" + c + (hist ? ";opacity:.6" : "") + "'><div class='fh'><b>" + esc(f.t) + "</b>" + sevTag(f.sev) + "</div><div class='tags'><span class='tag'>" + esc(f.dom) + "</span><span class='tag'>" + yy.join("-") + "</span><span class='tag'>" + fmt(kk[0]) + "–" + fmt(kk[1]) + " km</span><span class='tag'>fréq. " + esc(f.freq) + "</span></div>"; if (arr(f.sym).length) h += "<div class='tags'>" + arr(f.sym).map(function (s) { return "<span class='tag'>" + esc(s) + "</span>"; }).join("") + "</div>"; h += "<p><b>Cause :</b> " + esc(f.cause) + "</p><p><b>Action :</b> " + esc(f.fix) + "</p><div class='cost'>" + ic("euro", "width:13px;height:13px") + (cc[1] === 0 ? "Prise en charge / campagne" : fmt(cc[0]) + " – " + fmt(cc[1]) + " €") + "</div>"; if (!full) h += "<div style='margin-top:8px'><button class='btn xs ghost' data-act='openFault' data-id='" + esc(f.id) + "'>Détail & motorisations</button></div>"; return h + "</div>"; }
-  function tsbCard(t, full) { if (!t) return ""; var rc = isRecall(t); var h = "<div class='tsb" + (rc ? " rc" : "") + "'><div style='display:flex;gap:7px;flex-wrap:wrap'><span class='ref'>" + esc(t.ref) + "</span>" + sevTag(t.sev) + "<span class='tag'>" + esc(t.cat) + "</span><span class='tag mono'>" + esc(t.date) + "</span></div><b>" + esc(t.t) + "</b><p>" + esc(t.sum) + "</p><div class='act'><b>ACTION :</b> " + esc(t.act) + "</div>"; if (!full) h += "<div style='margin-top:8px'><button class='btn xs ghost' data-act='openTsb' data-id='" + esc(t.id) + "'>Périmètre</button></div>"; return h + "</div>"; }
-  function mountAnim(sc) { $$(".brow .bt i", sc).forEach(function (i) { i.style.width = i.dataset.w; }); }
-  function openDrawer(type, id, push) { if (S.drawer && push) S.drawer.hist.push({ type: S.drawer.type, id: S.drawer.id, tab: S.drawer.tab }); else if (!S.drawer) S.drawer = { hist: [] }; S.drawer.type = type; S.drawer.id = id; S.drawer.tab = type === "engine" ? "fiche" : "main"; renderDrawer(); D.body.classList.add("lock"); requestAnimationFrame(function () { var r = $("#dr"); if (r) r.classList.add("on"); }); beep("open"); }
-  function closeDrawer() { var r = $("#dr"); if (!r || !r.innerHTML) return; r.classList.remove("on"); S.drawer = null; if (!modalOpen) D.body.classList.remove("lock"); setTimeout(function () { if (!S.drawer) r.innerHTML = ""; }, 300); beep("close"); }
-  function renderDrawer() { if (!S.drawer) return; var d = S.drawer, head = "", tabs = "", body = ""; if (d.type === "engine") { var e = EIDX[d.id]; if (!e) { closeDrawer(); return; } var b = brandOf(e), m = modelOf(e), F = FU[e.fuel] || { c: "#FFD60A" }, fs = faultsFor(e), ts = tsbFor(e), rc = ts.filter(isRecall), v = ivi(e), L = IVL(v), pl = buildPlan(e, m, b); head = "<div class='dh' style='--fc:" + F.c + "'><div class='row'>" + (arr(d.hist).length ? "<button class='tb' data-act='drback'>" + ic("back") + "</button>" : "") + "<span class='tag mono'>" + esc(b ? b.n : "—") + "</span>" + fuelTag(e.fuel) + "<span class='tag'>" + esc(m ? m.n : "") + " · phase " + (m ? m.phase : 1) + "</span>" + (rc.length ? "<span class='tag' style='color:#FFD60A'>" + rc.length + " rappel(s)</span>" : "") + "<button class='tb x' data-act='drclose'>" + ic("x") + "</button></div><h2>" + esc(e.label) + "</h2><div class='sub mono'>" + esc(e.code) + " · " + yOf(e).join("-") + " · " + e.hp + " ch · " + e.nm + " Nm</div></div>"; tabs = "<div class='dtabs'>" + [["fiche", "Fiche"], ["pannes", "Pannes (" + fs.length + ")"], ["tsb", "TSB (" + ts.length + ")"], ["plan", "Entretien"]].map(function (t) { return "<button class='dt" + (d.tab === t[0] ? " on" : "") + "' data-act='drtab' data-t='" + t[0] + "'>" + t[1] + "</button>"; }).join("") + "</div>"; if (d.tab === "fiche") body = "<div class='sg'>" + [["Code", e.code], ["Famille", e.fam], ["Cylindrée", e.disp ? fmt(e.disp) + " cm³" : "—"], ["Puissance", e.hp + " ch / " + e.kw + " kW"], ["Couple", e.nm + " Nm"], ["Boîte", e.gb], ["Norme", e.norm], ["Production", yOf(e).join("-")], ["Modèle", m ? m.n : "—"], ["Phase", m ? m.phase : "—"], ["Région", b ? REGIONS[b.region] : "—"], ["IVI", v + " · " + L[0]]].map(function (r) { return "<div class='sp'><span>" + esc(r[0]) + "</span><b class='hl'>" + esc(r[1]) + "</b></div>"; }).join("") + "</div><div style='margin-top:12px'><button class='btn sm pri' data-act='selEng' data-id='" + esc(e.id) + "'>" + ic("wrench") + "Plan 200 000 km</button>" + (isAdmin() ? " <button class='btn sm ghost' data-act='expEng' data-id='" + esc(e.id) + "'>" + ic("dl") + "Exporter</button>" : "") + "</div>"; else if (d.tab === "pannes") body = fs.length ? fs.map(function (f) { return faultCard(f, !f.active, false); }).join("") : "<div class='empty'>Aucune panne référencée.</div>"; else if (d.tab === "tsb") body = ts.length ? ts.map(function (t) { return tsbCard(t, false); }).join("") : "<div class='empty'>Aucun bulletin.</div>"; else body = planHTML(pl, true); } else if (d.type === "fault") { var f = null; arr(DB.faults).forEach(function (x) { if (x && x.id === d.id) f = x; }); if (!f) { closeDrawer(); return; } var af = engForFault(f), kk = kmOf(f); head = "<div class='dh' style='--fc:" + (SV[f.sev] || SV["modérée"]).c + "'><div class='row'>" + sevTag(f.sev) + "<span class='tag'>" + esc(f.dom) + "</span><button class='tb x' data-act='drclose'>" + ic("x") + "</button></div><h2>" + esc(f.t) + "</h2><div class='sub mono'>" + yOf(f).join("-") + " · " + fmt(kk[0]) + "–" + fmt(kk[1]) + " km</div></div>"; body = faultCard(f, false, true) + "<div class='card panel' style='margin-top:12px'><h3>Motorisations corrélées (" + af.length + ")</h3>" + (af.length ? af.slice(0, 30).map(corrRow).join("") : "<p class='dim'>Aucune.</p>") + "</div>"; } else { var t = null; arr(DB.tsb).forEach(function (x) { if (x && x.id === d.id) t = x; }); if (!t) { closeDrawer(); return; } var at = engForTsb(t); head = "<div class='dh' style='--fc:" + (isRecall(t) ? "#FFD60A" : "#4D8DFF") + "'><div class='row'><span class='tag mono'>" + esc(t.ref) + "</span>" + sevTag(t.sev) + "<button class='tb x' data-act='drclose'>" + ic("x") + "</button></div><h2>" + esc(t.t) + "</h2><div class='sub mono'>" + esc(t.date) + " · " + esc(t.cat) + "</div></div>"; body = tsbCard(t, true) + "<div class='card panel' style='margin-top:12px'><h3>Périmètre corrélé (" + at.length + ")</h3>" + (at.length ? at.slice(0, 30).map(corrRow).join("") : "<p class='dim'>Aucun.</p>") + "</div>"; } var dr = $("#dr"); if (!dr) return; dr.innerHTML = "<div class='sc' data-act='drclose'></div><aside class='dw'>" + head + tabs + "<div class='db'>" + body + "</div><div class='dfoot'>SYNTHÈSE INGÉNIEUR — CONFIRMER AU VIN</div></aside>"; }
-  function planHTML(pl, compact) { var s = pl.svc || SVC_FB, e = pl.engine || {}, m = pl.model, b = pl.brand, h = "", i; var oil = arr(s.oil).length >= 2 ? s.oil : SVC_FB.oil, dist = arr(s.dist).length >= 3 ? s.dist : SVC_FB.dist, fl = arr(s.fluids).concat(["—", "—", "—", "—", "—", "—", "—"]).slice(0, 7); h += "<div class='selcard'><h3>" + ic("car", "width:16px;height:16px") + esc((b ? b.n + " " : "") + (m ? m.n : "")) + " · " + esc(str(e.label)) + "</h3><div class='sg'>" + [["Région", b ? REGIONS[b.region] : "—"], ["Phase", m ? m.phase : "—"], ["Code", str(e.code, "—")], ["Puissance", num(e.hp, 0) + " ch"], ["Couple", num(e.nm, 0) + " Nm"], ["Boîte", str(e.gb, "—")], ["Production", yOf(e).join("-")], ["Intervalle", fmt(pl.base) + " km / " + pl.months + " mois"]].map(function (r) { return "<div class='sp'><span>" + esc(r[0]) + "</span><b class='hl'>" + esc(r[1]) + "</b></div>"; }).join("") + "</div></div>"; h += "<div class='oil'><div class='oc'><span>HUILE</span><b>" + esc(str(oil[0])) + "</b><p>" + (num(oil[1], 0) ? num(oil[1], 0) + " L" : "") + "</p></div><div class='oc b'><span>DISTRIBUTION</span><b>" + esc(str(dist[0])) + "</b><p>" + (num(dist[1], 0) ? fmt(dist[1]) + " km" : "Chaîne — sans remplacement") + "</p></div></div>"; h += "<div class='sg' style='margin-bottom:12px'>" + [["Freins", fl[0]], ["Refroid.", fl[1]], ["Couple roues", fl[2] + " Nm"], ["Pneus", fl[3] + "/" + fl[4] + " bar"], ["Clim", fl[5]], ["Batterie", fl[6]]].map(function (r) { return "<div class='sp'><span>" + esc(r[0]) + "</span><b class='hl'>" + esc(r[1]) + "</b></div>"; }).join("") + "</div>"; h += "<div class='tw' style='max-height:" + (compact ? "380px" : "none") + ";overflow:auto'><table class='vtab'><thead><tr><th>Km</th><th>Mois</th><th>Interventions</th><th>Contrôles</th></tr></thead><tbody>"; for (i = 0; i < arr(pl.visits).length; i++) { var v = pl.visits[i]; if (!v) continue; h += "<tr><td class='km'>" + fmt(v.km) + "</td><td class='ct'>" + num(v.mo, 0) + "</td><td><ul>" + arr(v.ops).map(function (o) { return "<li>" + esc(o) + "</li>"; }).join("") + "</ul></td><td class='ct'>" + esc(arr(v.ctrl).join(" · ")) + "</td></tr>"; } h += "</tbody></table></div><p class='dim mono' style='font-size:9.5px;margin-top:9px'>PLAN COMPLET JUSQU'À 200 000 KM.</p>"; return h; }
-  function dueHTML(pl) { var km = clamp(S.calc.km, 0, 400000), yr = clamp(S.calc.year, 2005, YMAX), sev = num(S.calc.sev, 1) || 1, s = pl.svc || SVC_FB, rows = []; var base = Math.max(5000, Math.round(num(pl.base, 20000) * sev)), nx = Math.max(base, Math.ceil((km + 1) / base) * base), rm = nx - km; rows.push(["Révision " + fmt(nx) + " km", rm, base, rm <= 1500 ? "now" : rm <= base * 0.2 ? "soon" : "ok"]); arr(s.items).forEach(function (it) { if (!Array.isArray(it)) return; var ik = num(it[1], 0); if (ik <= 0 || ik <= base) return; ik = Math.max(1000, Math.round(ik * sev)); var n2 = Math.max(ik, Math.ceil((km + 1) / ik) * ik), r2 = n2 - km; rows.push([str(it[0]), r2, ik, r2 <= 1500 ? "now" : r2 <= ik * 0.2 ? "soon" : "ok"]); }); var dk = num(arr(s.dist)[1], 0); if (dk > 0) rows.push(["Distribution", dk - km, dk, dk - km <= 0 ? "now" : dk - km <= 10000 ? "soon" : "ok"]); rows.sort(function (a, b) { return a[1] - b[1]; }); return rows.map(function (r) { var dc = r[3] === "now" ? "#FF4D5E" : r[3] === "soon" ? "#FFAF2E" : "#43E08B"; var bd = r[1] <= 0 ? "DÉPASSÉ" : r[1] <= 1500 ? "À FAIRE" : "DANS " + fmt(r[1]) + " KM"; return "<div class='drow' style='--dc:" + dc + "'><div class='dr1'><b>" + esc(r[0]) + "</b><span class='dbadge " + r[3] + "\">" + bd + "</span></div><div class='pb'><i style='width:" + clamp((1 - r[1] / r[2]) * 100, 0, 100) + "%'></i></div></div>"; }).join(""); }
-  var SYN = { puretech: ["eb2"], hdi: ["dv5", "dw10"], tsi: ["ea211", "ea888"], tdi: ["ea288"], tce: ["h4dt", "h5ht", "hr12"], dci: ["k9k", "m9r"], courroie: ["courroie"], chaine: ["chaine"], adblue: ["adblue", "scr", "nox"], egr: ["egr"], fap: ["fap", "dpf"], turbo: ["turbo"], rappel: ["rappel"], tsb: ["tsb", "bulletin"], panne: ["panne"], eat8: ["eat8"], dsg: ["dq200"], zf8: ["zf8"], cvt: ["cvt", "xtr"], frein: ["frein"], clim: ["clim"], batterie: ["batterie", "12v"], france: ["renault", "peugeot", "citroen", "ds", "dacia"], europe: ["vw", "audi", "bmw", "mercedes", "volvo", "fiat"], asie: ["toyota", "honda", "nissan", "mazda", "hyundai", "kia", "suzuki"], chine: ["byd", "mg", "chery", "geely", "nio", "xpeng", "zeekr", "haval", "xiaomi"], amerique: ["ford", "tesla", "chevrolet", "jeep", "gmc", "ram"], p20e8: ["adblue", "scr"], p0420: ["catalyseur"], p0299: ["turbo"] };
-  function score(qn, hay) { var h = nk(hay); if (!qn) return 0; if (h === qn) return 120; if (h.indexOf(qn) === 0) return 95; if (h.indexOf(qn) > -1) return 70; var i = 0, j = 0; while (i < qn.length && j < h.length) { if (qn[i] === h[j]) i++; j++; } return i === qn.length ? 34 : 0; }
-  function omniSearch(q) { var qn = nk(q), syn = [], hits = [], famSet = {}, brSet = {}, i, j; String(q || "").toLowerCase().split(/[\s,;]+/).filter(Boolean).forEach(function (w) { var k = nk(w); if (SYN[k]) syn = syn.concat(SYN[k]); }); var wR = qn.indexOf("rappel") > -1, wT = qn.indexOf("tsb") > -1, wF = qn.indexOf("panne") > -1; arr(DB.engines).forEach(function (e) { var b = brandOf(e), m = modelOf(e), hay = [(b ? b.n : ""), (m ? m.n : ""), "phase " + (m ? m.phase : ""), e.code, e.fam, e.label, (b ? REGIONS[b.region] : "")].join(" "); var sc = score(qn, hay); if (!sc && syn.length) for (j = 0; j < syn.length; j++) if (nk(e.fam + e.code + e.gb).indexOf(nk(syn[j])) > -1) { sc = 62; break; } if (sc > 0) { famSet[e.fam] = 1; if (m) brSet[m.b] = 1; hits.push({ kind: "engine", id: e.id, score: sc + 6, title: engName(e), sub: e.code + " · " + e.hp + " ch · phase " + (m ? m.phase : 1), color: (FU[e.fuel] || {}).c || "#FFD60A", badge: "MOTEUR" }); } }); arr(DB.faults).forEach(function (f) { var kk = kmOf(f), hay = [f.t, arr(f.fam).join(" "), arr(f.mt).join(" "), f.cause, f.fix, arr(f.sym).join(" "), f.dom].join(" "); var sc = score(qn, hay); if (!sc) for (j = 0; j < arr(f.fam).length; j++) if (famSet[f.fam[j]]) { sc = 66; break; } if (!sc && syn.length) for (j = 0; j < syn.length; j++) if (nk(hay).indexOf(nk(syn[j])) > -1) { sc = 58; break; } if (sc > 0) hits.push({ kind: "fault", id: f.id, score: sc + (wF ? 26 : 0) + (SV[f.sev] || SV["modérée"]).w * 0.6, title: f.t, sub: f.sev + " · " + f.dom + " · " + fmt(kk[0]) + "-" + fmt(kk[1]) + " km", color: (SV[f.sev] || SV["modérée"]).c, badge: "PANNE" }); }); arr(DB.tsb).forEach(function (t) { var rc = isRecall(t), hay = [t.t, t.ref, arr(t.fam).join(" "), arr(t.mt).join(" "), t.sum, t.cat].join(" "); var sc = score(qn, hay); if (!sc) for (j = 0; j < arr(t.fam).length; j++) if (famSet[t.fam[j]]) { sc = 64; break; } if (!sc) for (j = 0; j < arr(t.b).length; j++) if (brSet[t.b[j]]) { sc = 48; break; } if (sc > 0) hits.push({ kind: "tsb", id: t.id, score: sc + (wR && rc ? 34 : wT && !rc ? 30 : 0) + (rc ? 12 : 0), title: t.t, sub: t.ref + " · " + t.date, color: rc ? "#FFD60A" : "#4D8DFF", badge: rc ? "RAPPEL" : "TSB" }); }); arr(DB.models).forEach(function (m) { var b = BIDX[m.b], sc = score(qn, (b ? b.n + " " : "") + m.n + " phase " + m.phase); if (sc > 0) hits.push({ kind: "model", id: m.id, score: sc + 4, title: (b ? b.n + " " : "") + m.n, sub: "phase " + m.phase + " · " + yOf(m).join("-"), color: "#4D8DFF", badge: "MODÈLE" }); }); arr(DB.brands).forEach(function (b) { var sc = score(qn, b.n + " " + b.pays + " " + REGIONS[b.region]); if (sc > 0) hits.push({ kind: "brand", id: b.id, score: sc, title: b.n, sub: REGIONS[b.region], color: "#25D4EE", badge: "MARQUE" }); }); hits.sort(function (a, b) { return b.score - a.score; }); var seen = {}, out = []; for (i = 0; i < hits.length && out.length < 18; i++) { var k = hits[i].kind + hits[i].id; if (seen[k]) continue; seen[k] = 1; out.push(hits[i]); } return out; }
-  function hl(t, q) { var n = String(q || "").trim(); if (!n) return esc(t); var i = String(t).toLowerCase().indexOf(n.toLowerCase()); return i < 0 ? esc(t) : esc(String(t).slice(0, i)) + "<mark>" + esc(String(t).slice(i, i + n.length)) + "</mark>" + esc(String(t).slice(i + n.length)); }
-  function omniRender() { var box = $("#omnires"); if (!box) return; var q = S.omni.q; if (!q || q.trim().length < 2) { box.innerHTML = "<div class='grp'>RECHERCHE PRÉDICTIVE MASSIVE</div><div class='hint'>" + ["3008 courroie", "3008 rappel", "AdBlue SCR", "EGR FAP", "EAT8", "Ioniq ICCU", "CVT", "P20E8"].map(function (s) { return "<button data-act='omniSeed' data-q='" + esc(s) + "'>" + esc(s) + "</button>"; }).join("") + "</div>"; box.classList.add("on"); return; } var hits = omniSearch(q); S.omni.hits = hits; S.omni.idx = hits.length ? 0 : -1; if (!hits.length) { box.innerHTML = "<div class='grp'>AUCUN RÉSULTAT</div>"; box.classList.add("on"); return; } var html = ""; ["fault", "tsb", "engine", "model", "brand"].forEach(function (k) { var g = hits.filter(function (x) { return x.kind === k; }); if (!g.length) return; html += "<div class='grp'>" + { fault: "PANNES", tsb: "RAPPELS / TSB", engine: "MOTORISATIONS", model: "MODÈLES", brand: "MARQUES" }[k] + " · " + g.length + "</div>"; g.forEach(function (it) { html += "<button class='hit" + (hits.indexOf(it) === S.omni.idx ? " sel" : "") + "' data-act='omniHit' data-kind='" + it.kind + "' data-id='" + esc(it.id) + "'><span class='k' style='color:" + it.color + "'>" + it.badge + "</span><span class='tx'><b>" + hl(it.title, q) + "</b><small>" + esc(it.sub) + "</small></span></button>"; }); }); box.innerHTML = html; box.classList.add("on"); }
-  function omniClose() { var b = $("#omnires"); if (b) b.classList.remove("on"); S.omni.idx = -1; }
-  function omniGo(kind, id) { omniClose(); if (kind === "engine" || kind === "fault" || kind === "tsb") openDrawer(kind, id, !!S.drawer); else if (kind === "model") { var m = MIDX[id]; if (m) { S.sel = { b: m.b, m: m.id, e: "" }; location.hash = "#/explorer"; render(); } } else { S.sel = { b: id, m: "", e: "" }; location.hash = "#/explorer"; render(); } }
-  function selEngine() { return S.sel.e ? (EIDX[S.sel.e] || null) : null; }
-  function modelsOf(b) { return arr(DB.models).filter(function (m) { return m.b === b; }).sort(function (a, b2) { return a.n.localeCompare(b2.n); }); }
-  function enginesOf(mid) { return arr(DB.engines).filter(function (e) { return arr(e.m).indexOf(mid) > -1; }).sort(function (a, b) { return a.hp - b.hp; }); }
-  function results() { var f = S.f, q = nk(f.q); var l = arr(DB.engines).filter(function (e) { var m = modelOf(e), b = brandOf(e); if (S.sel.b && (!m || m.b !== S.sel.b)) return false; if (S.sel.m && arr(e.m).indexOf(S.sel.m) < 0) return false; if (S.sel.e && e.id !== S.sel.e) return false; if (f.region && b && b.region !== f.region) return false; if (arr(f.fuel).length && arr(f.fuel).indexOf(e.fuel) < 0) return false; if (q && nk([(b ? b.n : ""), (m ? m.n : ""), e.code, e.fam, e.label].join(" ")).indexOf(q) < 0) return false; return true; }); var so = { brand: function (a, b) { return ((brandOf(a) || {}).n || "").localeCompare((brandOf(b) || {}).n || "") || b.hp - a.hp; }, hpdesc: function (a, b) { return b.hp - a.hp; }, year: function (a, b) { return yOf(b)[0] - yOf(a)[0]; }, ivi: function (a, b) { return ivi(b) - ivi(a); } }; return l.sort(so[f.sort] || so.brand); }
-  function engCard(e) { var F = FU[e.fuel] || { c: "#FFD60A" }, b = brandOf(e), m = modelOf(e), v = ivi(e), nf = faultsFor(e).filter(function (f) { return f.sev !== "info"; }).length, ts = tsbFor(e), nr = ts.filter(isRecall).length; return "<article class='card hov eng' style='--fc:" + F.c + "' data-act='openEng' data-id='" + esc(e.id) + "' tabindex='0'><div class='top'><span class='br'>" + esc(b ? b.n : "—") + "</span>" + fuelTag(e.fuel) + "<span class='tag' style='margin-left:auto'>phase " + (m ? m.phase : 1) + "</span></div><h4>" + esc(m ? m.n : "") + "</h4><div class='lbl'>" + esc(e.label) + "</div><div class='pw'><b>" + e.hp + "</b><span>ch · " + e.kw + " kW</span><span style='margin-left:auto'>" + e.nm + " Nm</span></div><div class='meta'><span class='tag mono'>" + esc(e.code) + "</span><span class='tag'>" + yOf(e).join("-") + "</span><span class='tag'>" + esc(e.gb) + "</span>" + (nr ? "<span class='tag' style='color:#FFD60A'>" + nr + " rappel(s)</span>" : "") + "</div><div class='ft'><span>" + nf + " panne(s)</span><span>" + ts.length + " bulletin(s)</span>" + iviPill(v) + "</div></article>"; }
-  function vBord() { var c = META.counts, h = "<div class='hero'><span class='kick'>MODULE 01 — POSTE DE BORD</span><h2>MÉGA-BASE <i>2017 → 2027</i><br>" + fmt(c.b) + " marques · " + fmt(c.m) + " modèles · " + fmt(c.e) + " motorisations</h2><p>" + fmt(c.f) + " pannes, " + fmt(c.t) + " bulletins dont <b style='color:#FFD60A'>" + fmt(c.rc) + " rappels</b>. Couverture puissances " + META.cover + " %. Recherche auto : " + AUTO.st.runs + " balayage(s), " + fmt(AUTO.st.added.m + AUTO.st.added.e + AUTO.st.added.f + AUTO.st.added.t) + " complément(s).</p><div class='hint' style='padding:9px 0 0'>" + ["3008 courroie", "3008 rappel", "AdBlue SCR", "EGR FAP", "EAT8", "Ioniq ICCU", "CVT", "P20E8"].map(function (s) { return "<button data-act='omniSeed' data-q='" + esc(s) + "'>" + esc(s) + "</button>"; }).join("") + "</div><div class='acts'><a class='btn pri' href='#/explorer'>" + ic("car") + "Sélection du parc</a><button class='btn grn' data-act='goDiag'>" + ic("stetho") + "Autovérification</button>" + (isAdmin() ? "<button class='btn amb' data-act='goAdmin'>" + ic("db") + "Administration</button><button class='btn ghost' data-act='autoNow'>" + ic("spark") + "Recherche auto</button><button class='btn ghost' data-act='saveNow'>" + ic("save") + "Sauvegarde locale</button>" : "") + "<a class='btn' href='#/studio'>" + ic("spark") + "Studio</a></div><div class='banner' style='margin:13px 0 0'>" + ic("reset", "width:14px;height:14px;color:#43E08B") + "<b>Cache purgé à l'ouverture</b><span class='dim mono' style='font-size:10.5px'>" + esc(purgeLabel()) + "</span><button class='btn xs ghost' data-act='purge'>PURGER</button></div></div>"; h += "<div class='kpis'>" + [["db", "MARQUES", c.b, "#25D4EE"], ["car", "MODÈLES", c.m, "#4D8DFF"], ["piston", "MOTORISATIONS", c.e, "#E45CFF"], ["alert", "PANNES", c.f, "#FF4D5E"], ["bell", "RAPPELS", c.rc, "#FFD60A"], ["wrench", "DOMAINES", c.dom, "#43E08B"]].map(function (k) { return "<div class='card kpi' style='--kc:" + k[3] + "'>" + ic(k[0]) + "<b>" + fmt(k[2]) + "</b><span>" + k[1] + "</span></div>"; }).join("") + "</div>"; var regs = Object.keys(REGIONS).map(function (r) { return [r, META.regions[r] || 0]; }), rm = Math.max(1, Math.max.apply(null, regs.map(function (x) { return x[1]; }))); h += "<div class='g2'><div class='card panel'><h3>Marques par région</h3><div class='bars'>" + regs.map(function (x) { return "<div class='brow'><span class='bl'>" + REGIONS[x[0]] + "</span><div class='bt'><i data-w='" + Math.round(x[1] / rm * 100) + "%'></i></div><b>" + x[1] + "</b></div>"; }).join("") + "</div></div>"; var fc = Object.keys(FU).map(function (f) { return [f, arr(DB.engines).filter(function (e) { return e.fuel === f; }).length]; }).filter(function (x) { return x[1]; }), mx = Math.max(1, Math.max.apply(null, fc.map(function (x) { return x[1]; }))); h += "<div class='card panel'><h3>Énergies du parc</h3><div class='bars'>" + fc.map(function (x) { return "<div class='brow'><span class='bl'>" + FU[x[0]].l + "</span><div class='bt'><i data-w='" + Math.round(x[1] / mx * 100) + "%' style='--bc:" + FU[x[0]].c + "'></i></div><b>" + fmt(x[1]) + "</b></div>"; }).join("") + "</div></div></div>"; return h; }
-  function vExplorer() { var h = "<div class='vh'><div><span class='kick'>MODULE 02 — PARC 2017 → 2027</span><h1>SÉLECTION <i>PRÉCISE</i></h1><div class='sub'>Marque → Modèle (phase) → Motorisation (puissance). Alimente le plan 200 000 km du module 4.</div></div></div><div class='exwrap'><div class='card filters'>"; h += "<div class='fsec'><label class='lb'>Région</label><select class='sel' data-f='region'><option value=''>Toutes</option>" + Object.keys(REGIONS).map(function (r) { return "<option value='" + r + "'" + (S.f.region === r ? " selected" : "") + ">" + REGIONS[r] + "</option>"; }).join("") + "</select></div>"; var brands = arr(DB.brands).filter(function (b) { return !S.f.region || b.region === S.f.region; }); h += "<div class='fsec'><label class='lb'>1 · Marque</label><select class='sel' data-sel='b'><option value=''>Toutes (" + brands.length + ")</option>" + brands.map(function (b) { return "<option value='" + esc(b.id) + "'" + (S.sel.b === b.id ? " selected" : "") + ">" + esc(b.n) + " (" + (META.byBrand[b.id] || 0) + ")</option>"; }).join("") + "</select></div>"; var mods = S.sel.b ? modelsOf(S.sel.b) : []; h += "<div class='fsec'><label class='lb'>2 · Modèle & phase</label><select class='sel' data-sel='m'" + (S.sel.b ? "" : " disabled") + "><option value=''>" + (S.sel.b ? mods.length + " modèle(s)" : "Choisir une marque") + "</option>" + mods.map(function (m) { return "<option value='" + esc(m.id) + "'" + (S.sel.m === m.id ? " selected" : "") + ">" + esc(m.n) + " · phase " + m.phase + " · " + yOf(m).join("-") + "</option>"; }).join("") + "</select></div>"; var engs = S.sel.m ? enginesOf(S.sel.m) : []; h += "<div class='fsec'><label class='lb'>3 · Motorisation & puissance</label><select class='sel' data-sel='e'" + (S.sel.m ? "" : " disabled") + "><option value=''>" + (S.sel.m ? engs.length + " motorisation(s)" : "Choisir un modèle") + "</option>" + engs.map(function (e) { return "<option value='" + esc(e.id) + "'" + (S.sel.e === e.id ? " selected" : "") + ">" + esc(e.label) + " · " + e.hp + " ch · " + esc(e.code) + "</option>"; }).join("") + "</select></div>"; h += "<div class='fsec'><label class='lb'>Recherche</label><input class='inp' type='search' data-f='q' value='" + esc(S.f.q) + "'></div><div class='fsec'><label class='lb'>Énergie</label><div class='chipset'>" + Object.keys(FU).map(function (k) { return "<button class='fc" + (arr(S.f.fuel).indexOf(k) > -1 ? " on" : "") + "' style='--fc:" + FU[k].c + "' data-act='ffuel' data-k='" + k + "'>" + FU[k].l + "</button>"; }).join("") + "</div></div><div class='fsec'><button class='btn sm ghost' data-act='resetSel' style='width:100%'>" + ic("reset") + "Réinitialiser</button></div></div><div>"; var e = selEngine(); if (e) { var m = modelOf(e), b = brandOf(e), fs = faultsFor(e), ts = tsbFor(e), nr = ts.filter(isRecall).length, v = ivi(e), L = IVL(v); h += "<div class='selcard'><h3>" + ic("check", "width:16px;height:16px") + "SÉLECTION — " + esc((b ? b.n + " " : "") + (m ? m.n : "")) + " · " + esc(e.label) + "</h3><div class='sg'>" + [["Région", b ? REGIONS[b.region] : "—"], ["Phase", m ? m.phase : "—"], ["Code", e.code], ["Puissance", e.hp + " ch"], ["Couple", e.nm + " Nm"], ["Boîte", e.gb], ["Pannes", fs.length], ["Rappels", nr], ["IVI", v + " " + L[0]]].map(function (r) { return "<div class='sp'><span>" + esc(r[0]) + "</span><b class='hl'>" + esc(r[1]) + "</b></div>"; }).join("") + "</div><div style='margin-top:11px'><button class='btn pri sm' data-act='goPlan'>" + ic("wrench") + "Plan 200 000 km</button> <button class='btn sm ghost' data-act='openEng' data-id='" + esc(e.id) + "'>Fiche</button></div></div>"; } var l = results(), s2 = l.slice(0, S.shown); h += "<div class='bar'><span class='cnt'>" + fmt(l.length) + " motorisation(s)</span><select class='sel' data-f='sort' style='margin-left:auto;width:auto'>" + [["brand", "Marque A-Z"], ["hpdesc", "Puissance ↓"], ["year", "Année ↓"], ["ivi", "Vigilance ↓"]].map(function (o) { return "<option value='" + o[0] + "'" + (S.f.sort === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div><div class='eg'>" + (s2.length ? s2.map(engCard).join("") : "<div class='empty' style='grid-column:1/-1'>Aucune motorisation.</div>") + "</div><div class='more'>" + (l.length > S.shown ? "<button class='btn ghost' data-act='more'>Afficher plus (" + (l.length - S.shown) + ")</button>" : "") + "</div></div></div>"; return h; }
-  function vTech() { var L = S.tech, nr = arr(DB.tsb).filter(isRecall).length, h = "<div class='vh'><div><span class='kick'>MODULE 03 — RECHERCHE EXTRÊME</span><h1>PANNES · TSB · <i>RAPPELS</i></h1></div></div><div class='atabs'>" + [["faults", "PANNES (" + META.counts.f + ")"], ["tsb", "TSB (" + (META.counts.t - nr) + ")"], ["recalls", "RAPPELS (" + nr + ")"]].map(function (t) { return "<button class='at" + (L.tab === t[0] ? " on" : "") + "' data-act='techTab' data-t='" + t[0] + "'>" + t[1] + "</button>"; }).join("") + "</div>"; h += "<div class='card panel' style='margin-bottom:12px'><div class='fr f4'><div><label class='lb'>Texte / code défaut</label><input class='inp' data-tf='q' value='" + esc(L.q) + "'></div><div><label class='lb'>Région</label><select class='sel' data-tf='region'><option value=''>Toutes</option>" + Object.keys(REGIONS).map(function (r) { return "<option value='" + r + "'" + (L.region === r ? " selected" : "") + ">" + REGIONS[r] + "</option>"; }).join("") + "</select></div><div><label class='lb'>Marque</label><select class='sel' data-tf='brand'><option value=''>Toutes</option>" + arr(DB.brands).filter(function (b) { return !L.region || b.region === L.region; }).map(function (b) { return "<option value='" + esc(b.id) + "'" + (L.brand === b.id ? " selected" : "") + ">" + esc(b.n) + "</option>"; }).join("") + "</select></div><div><label class='lb'>Modèle</label><select class='sel' data-tf='model'" + (L.brand ? "" : " disabled") + "><option value=''>Tous</option>" + (L.brand ? modelsOf(L.brand).map(function (m) { return "<option value='" + esc(m.id) + "'" + (L.model === m.id ? " selected" : "") + ">" + esc(m.n) + "</option>"; }).join("") : "") + "</select></div></div><div class='fr f4' style='margin-top:10px'><div><label class='lb'>Phase</label><select class='sel' data-tf='phase'><option value=''>Toutes</option>" + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(function (p) { return "<option value='" + p + "'" + (L.phase === String(p) ? " selected" : "") + ">" + p + "</option>"; }).join("") + "</select></div><div><label class='lb'>Sévérité</label><select class='sel' data-tf='sev'><option value=''>Toutes</option>" + Object.keys(SV).map(function (s) { return "<option value='" + esc(s) + "'" + (L.sev === s ? " selected" : "") + ">" + s + "</option>"; }).join("") + "</select></div><div><label class='lb'>Domaine</label><select class='sel' data-tf='dom'><option value=''>Tous</option>" + Object.keys(arr(DB.faults).concat(arr(DB.tsb)).reduce(function (a, x) { if (x && x.dom) a[x.dom] = 1; return a; }, {})).sort().map(function (d) { return "<option value='" + esc(d) + "'" + (L.dom === d ? " selected" : "") + ">" + esc(d) + "</option>"; }).join("") + "</select></div><div><label class='lb'>Km véhicule</label><input class='inp mono' type='number' data-tf='km' value='" + esc(L.km) + "'></div></div></div>"; var q = nk(L.q), kmv = num(L.km, 0), out = [], tm = L.model ? MIDX[L.model] : null; function ok(it) { if (!it) return false; if (L.region) { var r2 = false; arr(it.b).forEach(function (x) { if (BIDX[x] && BIDX[x].region === L.region) r2 = true; }); if (!r2 && arr(it.fam).length) r2 = arr(DB.engines).some(function (e) { var b = brandOf(e); return b && b.region === L.region && arr(it.fam).indexOf(e.fam) > -1; }); if (!r2 && arr(it.mt).length) r2 = arr(DB.models).some(function (m) { var b = BIDX[m.b]; return b && b.region === L.region && tokHit(it.mt, m.n); }); if (!r2) return false; } if (L.brand) { var hit = false; if (arr(it.mt).length) hit = modelsOf(L.brand).some(function (m) { return tokHit(it.mt, m.n); }); if (!hit && arr(it.b).indexOf(L.brand) > -1) hit = true; if (!hit && arr(it.fam).length) hit = arr(DB.engines).some(function (e) { var m = modelOf(e); return m && m.b === L.brand && arr(it.fam).indexOf(e.fam) > -1; }); if (!hit) return false; } if (tm && !tokHit(it.mt, tm.n)) { if (!enginesOf(tm.id).some(function (e) { return arr(it.fam).indexOf(e.fam) > -1; })) return false; } if (L.phase && arr(it.ph).length && arr(it.ph).indexOf("*") < 0 && arr(it.ph).indexOf(L.phase) < 0) return false; if (L.sev && it.sev !== L.sev) return false; if (L.dom && it.dom !== L.dom) return false; if (kmv) { var kk = kmOf(it); if (kmv < kk[0] || kmv > kk[1]) return false; } if (q && nk([it.t, it.ref, it.cause, it.fix, it.sum, it.act, arr(it.sym).join(" "), arr(it.fam).join(" "), it.dom].join(" ")).indexOf(q) < 0) return false; return true; } if (L.tab === "faults") out = arr(DB.faults).filter(ok).sort(function (a, b) { return SV[b.sev].w - SV[a.sev].w; }); else out = arr(DB.tsb).filter(function (t) { var rc = isRecall(t); if (L.tab === "recalls" && !rc) return false; if (L.tab === "tsb" && rc) return false; return ok(t); }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); }); h += "<div class='bar'><span class='cnt'>" + out.length + " résultat(s)</span></div><div class='eg' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr))'>" + (out.length ? out.slice(0, 120).map(function (x) { return "<div>" + (L.tab === "faults" ? faultCard(x, false, false) : tsbCard(x, false)) + "</div>"; }).join("") : "<div class='empty' style='grid-column:1/-1'>Aucun résultat.</div>") + "</div>"; return h; }
-  function vEntretien() { var e = selEngine(), h = "<div class='vh'><div><span class='kick'>MODULE 04 — ENTRETIEN 200 000 KM</span><h1>PLAN <i>PAR MOTORISATION</i></h1></div><a class='btn sm ghost' href='#/explorer'>" + ic("car") + "Modifier</a></div>"; if (!e) return h + "<div class='empty'>" + ic("wrench") + "<p><b>Aucune motorisation sélectionnée.</b></p><a class='btn pri sm' href='#/explorer' style='margin-top:10px'>Ouvrir le parc</a></div>"; var m = modelOf(e), b = brandOf(e), pl = buildPlan(e, m, b); h += planHTML(pl, false); var fs = faultsFor(e).filter(function (f) { return f.sev !== "info"; }), rc = tsbFor(e).filter(isRecall); h += "<div class='g2' style='margin-top:13px'><div class='card panel'><h3>Pannes à surveiller (" + fs.length + ")</h3>" + (fs.length ? fs.slice(0, 5).map(function (f) { return faultCard(f, !f.active, false); }).join("") : "<p class='dim'>Aucune.</p>") + "</div><div class='card panel'><h3>Rappels (" + rc.length + ")</h3>" + (rc.length ? rc.map(function (t) { return tsbCard(t, false); }).join("") : "<p class='dim'>Aucun.</p>") + "</div></div>"; h += "<div class='calc'><h3>" + ic("cal") + "CALCULATEUR</h3><div class='fr f3'><div><label class='lb'>Km actuel</label><input class='inp mono' type='number' data-calc='km' value='" + num(S.calc.km, 0) + "'></div><div><label class='lb'>Année</label><input class='inp mono' type='number' data-calc='year' value='" + num(S.calc.year, 2021) + "'></div><div><label class='lb'>Usage</label><select class='sel' data-calc='sev'><option value='1'>Normal</option><option value='0.75'>Sévère</option></select></div></div><div class='due' id='dueList'>" + dueHTML(pl) + "</div></div>"; return h; }
-  function vStudio() { var P = WP.P, h = "<div class='vh'><div><span class='kick'>MODULE 05 — STUDIO</span><h1>FONDS <i>DYNAMIQUES</i></h1></div><div style='display:flex;gap:7px'><button class='btn sm ghost' data-act='stRandom'>" + ic("dice") + "Aléatoire</button><button class='btn sm ghost' data-act='stReset'>" + ic("reset") + "Reset</button></div></div><div class='stwrap'><div class='card stage'><div class='screen'><canvas id='pv'></canvas><div class='hud' id='hud'></div></div><div style='display:flex;gap:7px;margin-top:11px'><button class='btn sm " + (P.run ? "amb" : "ghost") + "' data-act='stRun'>" + (P.run ? "Pause" : "Lecture") + "</button><button class='btn sm ghost' data-act='stDir'>" + (P.dir > 0 ? "Sens avant" : "Sens arrière") + "</button></div><div class='psrow' style='margin-top:10px'>" + Object.keys(WP.PRESETS).map(function (n) { return "<button data-act='stPreset' data-n='" + esc(n) + "'>" + esc(n) + "</button>"; }).join("") + "</div></div><div class='card ctrl'>"; h += "<div class='csec'><label class='lb'>Scène</label><div class='mgrid'>" + WP.MODES.map(function (m) { return "<button class='mb" + (P.mode === m[0] ? " on" : "") + "' data-act='stMode' data-m='" + m[0] + "'><i style='background:linear-gradient(135deg," + WP.pal().a + "," + WP.pal().b + ")'></i>" + m[1] + "</button>"; }).join("") + "</div></div>"; h += "<div class='csec'><label class='lb'>Palette</label><div class='pgrid'>" + Object.keys(WP.TH).map(function (k) { return "<button class='pb pbth" + (!P.useCustom && P.theme === k ? " on" : "") + "' data-act='stTheme' data-t='" + k + "' style='background:linear-gradient(135deg," + WP.TH[k].a + "," + WP.TH[k].b + "," + WP.TH[k].c + ")'></button>"; }).join("") + "</div><div class='srow' style='margin-top:8px'><span>Personnalisée</span><label class='sw'><input type='checkbox' id='customToggle' data-act='stCustom'" + (P.useCustom ? " checked" : "") + "><i></i></label></div><div class='crow' style='margin-top:8px'>" + [["bg", "Fond"], ["a", "Dom."], ["b", "Acc1"], ["c", "Acc2"], ["d", "Acc3"]].map(function (c) { return "<div><label>" + c[1] + "</label><input type='color' data-c='" + c[0] + "' value='" + ((P.custom || {})[c[0]] || "#000000") + "'></div>"; }).join("") + "</div></div>"; h += "<div class='csec'>" + [["speed", "Vitesse", 0, 200, 5], ["density", "Densité", 0, 100, 1], ["count", "Particules", 10, 400, 5], ["turb", "Turbulence", 0, 100, 1], ["scale", "Échelle", 20, 160, 2], ["glow", "Halo", 0, 100, 1], ["blur", "Flou", 0, 8, 0.5], ["stroke", "Trait", 0.5, 4, 0.1], ["drift", "Dérive", 0, 100, 1]].map(function (s) { return "<div><div class='srow'><span>" + s[1] + "</span><span class='sval' data-pv='" + s[0] + "'>" + WP.label(s[0], P[s[0]]) + "</span></div><input type='range' data-p='" + s[0] + "' min='" + s[2] + "' max='" + s[3] + "' step='" + s[4] + "' value='" + num(P[s[0]], 0) + "'></div>"; }).join("") + "</div>"; h += "<div class='csec'>" + [["grid", "Grille"], ["run", "Animation"], ["bg", "Fond global"]].map(function (t) { return "<div class='srow'><span>" + t[1] + "</span><label class='sw'><input type='checkbox' data-p='" + t[0] + "'" + (P[t[0]] ? " checked" : "") + "><i></i></label></div>"; }).join("") + "</div></div></div>"; return h; }
-  function vAdmin() {
-    if (!isAdmin()) return "<div class='empty'>" + ic("lock") + "<p>Réservé administrateur.</p></div>";
-    var A = S.adm, h = "<div class='vh'><div><span class='kick'>MODULE 06 — ADMINISTRATION</span><h1>BASE · AUTO · ACCÈS · <i>DIFFUSION</i></h1></div><button class='btn sm ghost' data-act='logout'>" + ic("lock") + "Quitter</button></div>";
-    h += "<div class='banner'>" + ic("save", "width:15px;height:15px;color:#43E08B") + "<b>Sauvegarde locale admin</b><span class='dim mono'>" + (LASTSAVE ? "dernière : " + new Date(LASTSAVE).toLocaleString("fr-FR") : "aucune") + " · " + META.size + " Ko</span><button class='btn sm grn' data-act='saveNow'>" + ic("save") + "SAUVEGARDER</button><button class='btn sm ghost' data-act='backupExp'>" + ic("dl") + "Backup JSON</button><button class='btn sm ghost' data-act='backupImp'>" + ic("ul") + "Restaurer</button><input type='file' id='bakFile' accept='.json' style='display:none'></div>";
-    h += "<div class='banner'>" + ic("bcast", "width:15px;height:15px;color:#FFD60A") + "<b>Diffusion temps réel</b><label class='sw'><input type='checkbox' data-act='liveToggle'" + (REG.live ? " checked" : "") + "><i></i></label><span class='dim mono'>rév " + num(REG.rev, 0) + "</span><button class='btn sm pri' data-act='publish'>Diffuser</button></div>";
-    h += "<div class='banner'>" + ic("reset", "width:15px;height:15px;color:#43E08B") + "<b>Cache</b><span class='dim mono'>" + esc(purgeLabel()) + "</span><button class='btn sm ghost' data-act='purge'>Purger</button><button class='btn sm dgr' data-act='purgeAll'>Purge totale</button></div>";
-    h += "<div class='atabs'>" + [["files", "FICHIERS"], ["auto", "RECHERCHE AUTO"], ["mega", "MÉGA-BASE"], ["import", "IMPORT"], ["access", "ACCÈS TIERS"], ["journal", "JOURNAL"]].map(function (t) { return "<button class='at" + (A.tab === t[0] ? " on" : "") + "' data-act='admTab' data-t='" + t[0] + "'>" + t[1] + "</button>"; }).join("") + "</div>";
-    if (A.tab === "auto") { var st = AUTO.st, nxt = num(st.lastFull, 0) + 30 * 86400000; h += "<div class='card panel' style='margin-bottom:12px'><h3>" + ic("spark") + "Recherche automatique massive<span class='chip'>" + st.runs + " balayage(s)</span></h3><p class='muted' style='font-size:12px'>À chaque utilisation (session admin) : comble modèles/phases manquants, motorisations & puissances incomplètes, familles sans panne, marques sans bulletin ni rappel. Cycle complet automatique tous les 30 jours.</p><div class='sg' style='margin:10px 0'>" + [["Dernier balayage", st.last ? new Date(st.last).toLocaleString("fr-FR") : "jamais"], ["Prochain cycle 30 j", new Date(nxt).toLocaleDateString("fr-FR")], ["Modèles +", st.added.m], ["Motorisations +", st.added.e], ["Pannes +", st.added.f], ["Bulletins +", st.added.t], ["Couverture ≥2 mot.", META.cover + " %"], ["Au lancement", st.onLaunch ? "activé" : "désactivé"]].map(function (r) { return "<div class='sp'><span>" + esc(r[0]) + "</span><b class='hl'>" + esc(r[1]) + "</b></div>"; }).join("") + "</div><div class='srow' style='margin:10px 0'><span>Balayage automatique à chaque lancement</span><label class='sw'><input type='checkbox' data-act='autoToggle'" + (st.onLaunch ? " checked" : "") + "><i></i></label></div><div style='display:flex;gap:7px;flex-wrap:wrap'><button class='btn pri sm' data-act='autoNow'>" + ic("spark") + "Balayage immédiat</button><button class='btn amb sm' data-act='autoFull'>" + ic("reset") + "Cycle complet 30 j</button></div></div><div class='card panel'><h3>Journal recherche auto</h3><div class='journal'>" + (arr(st.log).length ? arr(st.log).slice(0, 30).map(function (l) { return "<div class='jr'><time>" + new Date(l.ts).toLocaleTimeString("fr-FR") + "</time><span class='jt'>AUTO</span><span>" + esc(l.m) + "</span></div>"; }).join("") : "<p class='dim'>Aucun balayage.</p>") + "</div></div>"; }
-    else if (A.tab === "files") { h += "<div class='fgrid'>" + FILES.map(function (f) { var a = arr(DB[f[0]]); return "<div class='card hov filecard'><div class='fn'>" + ic("file") + f[0] + ".json</div><div class='ct'>" + fmt(a.length) + "</div><div class='fa'><button class='btn xs ghost' data-act='fileExp' data-k='" + f[0] + "'>" + ic("dl") + "JSON</button></div></div>"; }).join("") + "</div><div class='tools'><button class='btn pri sm' data-act='expAll'>" + ic("dl") + "Exporter la base</button><button class='btn grn sm' data-act='saveNow'>" + ic("save") + "Sauvegarde locale</button><button class='btn ghost sm' data-act='integrity'>" + ic("check") + "Intégrité</button><button class='btn dgr sm' data-act='askReset'>" + ic("reset") + "Base usine</button></div>"; }
-    else if (A.tab === "mega") { var q = String(A.mega || "").toLowerCase(), cd = arr(RAW.cand).filter(function (c) { return c && (!q || nk(c.brand + c.model + c.code + c.label).indexOf(nk(q)) > -1); }); h += "<div class='card panel'><h3>Mise à jour massive manuelle</h3><input class='inp' data-mega='q' value='" + esc(A.mega) + "' placeholder='Rechercher…'><div style='margin:10px 0'><button class='btn sm pri' data-act='megaAll'>Intégrer les " + cd.length + "</button></div><div class='tw'><table class='t'><thead><tr><th>Marque</th><th>Modèle</th><th>Motorisation</th><th></th></tr></thead><tbody>" + cd.map(function (c) { return "<tr><td>" + esc(c.brand) + "</td><td>" + esc(c.model) + " ph" + c.phase + "</td><td class='mono'>" + esc(c.label) + " " + c.hp + "ch</td><td><button class='btn xs pri' data-act='megaAdd' data-i='" + arr(RAW.cand).indexOf(c) + "'>Intégrer</button></td></tr>"; }).join("") + "</tbody></table></div></div>"; }
-    else if (A.tab === "import") { h += "<div class='card panel'><h3>Import multi-formats (admin seul)</h3><div class='dz' id='dz' data-act='dzPick'>" + ic("ul") + "<div>Déposer un fichier ou cliquer</div></div><div class='fmtrow'><span>JSON</span><span>CSV</span><span>TSV</span><span>XML</span><span>YAML</span><span>HTML</span><span>XLSX</span><span>ODS</span></div><input type='file' id='impFile' style='display:none'><textarea class='inp mono' id='impText' rows='6' style='margin-top:10px'></textarea><div id='impReport'></div><div style='margin-top:10px'><button class='btn ghost sm' data-act='impAnalyze'>Analyser</button> <button class='btn pri sm' id='impApply' data-act='impApply' disabled>Fusionner</button></div></div>"; }
-    else if (A.tab === "access") { var sess = tierSession(); h += "<div class='card panel'><h3>Accès tiers<span class='chip'>" + (sess ? "session active" : "aucune session") + "</span></h3><p class='muted' style='font-size:12px;margin-bottom:10px'>Une seule case mot de passe, communiquée hors application. Lecture seule. Vous pouvez couper ou révoquer en temps réel.</p><div class='srow' style='margin:10px 0'><span>Accès tiers autorisé</span><label class='sw'><input type='checkbox' data-act='tierOpen'" + (REG.tierOpen !== false ? " checked" : "") + "><i></i></label></div><div><button class='btn dgr sm' data-act='kickTier'" + (sess ? "" : " disabled") + ">" + ic("lock") + "Révoquer la session</button></div></div><div class='card panel' style='margin-top:12px'><h3>Journal des accès</h3><div class='journal'>" + (arr(REG.log).length ? arr(REG.log).slice(0, 30).map(function (l) { return "<div class='jr'><time>" + new Date(l.ts).toLocaleTimeString("fr-FR") + "</time><span>" + esc(l.a) + "</span></div>"; }).join("") : "<p class='dim'>Aucune activité.</p>") + "</div></div>"; }
-    else { h += "<div class='card panel'><h3>Journal</h3><div class='journal'>" + AUDIT.slice().reverse().slice(0, 60).map(function (a) { return "<div class='jr'><time>" + new Date(a.ts).toLocaleTimeString("fr-FR") + "</time><span class='jt'>" + esc(a.type) + "</span><span>" + esc(a.msg) + "</span></div>"; }).join("") + "</div></div>"; }
-    return h;
-  }
-  function testListHTML() { var q = nk(S.tf), h = "", n = 0; arr(TESTS).forEach(function (t) { if (!t) return; if (q && nk(t.n + " " + t.info).indexOf(q) < 0) return; n++; var c = t.ok ? "#43E08B" : t.soft ? "#FFAF2E" : "#FF4D5E"; h += "<div class='tst' style='--tc:" + c + "'><span class='ti'>" + (t.ok ? "OK" : t.soft ? "!" : "X") + "</span><div style='flex:1'><b>" + esc(t.n) + "</b><small>" + esc(t.info) + "</small></div></div>"; }); return n ? h : "<div class='empty'>Aucun contrôle.</div>"; }
-  function vDiag() { var fl = arr(TESTS).filter(function (t) { return t && !t.ok && !t.soft; }).length, wn = arr(TESTS).filter(function (t) { return t && !t.ok && t.soft; }).length, col = fl ? "#FF4D5E" : wn ? "#FFAF2E" : "#43E08B"; return "<div class='vh'><div><span class='kick'>MODULE 07 — AUTOVÉRIFICATION MASSIVE</span><h1>" + (TESTS.length || "…") + " CONTRÔLES</h1></div><div style='display:flex;gap:7px'><button class='btn sm grn' data-act='runTests'>" + ic("reset") + "Relancer</button>" + (isAdmin() ? "<button class='btn sm ghost' data-act='expTests'>" + ic("dl") + "Rapport</button>" : "") + "</div></div><div class='card panel' style='border-left:3px solid " + col + ";margin-bottom:12px'><h3>" + (TESTS.length - fl) + "/" + TESTS.length + " OK</h3><p class='muted'>" + (fl ? fl + " bloquant(s). " : "Système opérationnel. ") + (wn ? wn + " avertissement(s). " : "") + "Cache : " + esc(purgeLabel()) + "</p></div><div class='card panel'><input class='inp' data-tfilter='1' value='" + esc(S.tf) + "' placeholder='Filtrer…' style='margin-bottom:9px'><div class='tests' id='testList'>" + testListHTML() + "</div></div>"; }
-  function render() { var v = S.view, m = $("#view"); if (!m) return; if (v !== "studio") WP.detach(); var act = D.activeElement, sel = null, caret = null; if (act && act.dataset) { if (act.dataset.f) sel = "[data-f='" + act.dataset.f + "']"; else if (act.dataset.tf) sel = "[data-tf='" + act.dataset.tf + "']"; else if (act.dataset.mega) sel = "[data-mega]"; if (sel) { try { caret = act.selectionStart; } catch (e) { caret = null; } } } $$(".nv,#tabs a").forEach(function (a) { a.classList.toggle("on", a.dataset.v === v); }); var h = ""; try { h = v === "bord" ? vBord() : v === "explorer" ? vExplorer() : v === "tech" ? vTech() : v === "entretien" ? vEntretien() : v === "studio" ? vStudio() : v === "admin" ? vAdmin() : vDiag(); } catch (e) { logErr("render", e); h = "<div class='card panel'><h3>Erreur de rendu</h3><p class='muted'>" + esc(e.message) + "</p><button class='btn sm ghost' data-act='purge'>Purger le cache</button></div>"; } m.innerHTML = h; mountAnim(m); updateMeta(); if (sel) { var el = $(sel, m); if (el) { el.focus(); if (caret != null) { try { el.setSelectionRange(caret, caret); } catch (e) {} } } } if (v === "studio") { var cv = $("#pv"); if (cv) { WP.attach(cv); WP.sync(); } } }
-  function setTxt(id, v) { var e = $(id); if (e) e.textContent = v; }
-  function updateMeta() { var c = META.counts; setTxt("#nEng", fmt(c.e)); setTxt("#nTech", fmt(c.f + c.t)); setTxt("#nPlan", fmt(c.dom)); setTxt("#stLinks", fmt(META.links)); setTxt("#stCorr", fmt(META.corr)); setTxt("#stInt", META.integ.pct + "%"); setTxt("#stSize", META.size + " Ko"); setTxt("#stDiff", isAdmin() ? (REG.live ? "AUTO" : "MANUEL") + " r" + num(REG.rev, 0) : isTier() ? "LECTURE r" + num(REG.rev, 0) : "—"); var fl = arr(TESTS).filter(function (t) { return t && !t.ok && !t.soft; }).length; setTxt("#stTest", TESTS.length ? (TESTS.length - fl) + "/" + TESTS.length : "…"); setTxt("#nTest", TESTS.length ? (fl ? "!" : "OK") : "—"); var ch = $("#ichip"); if (ch) ch.className = "chip " + (META.integ.ok ? "ok" : "bad"); setTxt("#itxt", META.integ.ok ? "INTÈGRE" : "ERREURS"); var ab = $("#admb"); if (ab) { ab.innerHTML = ic(isAdmin() ? "unlock" : "lock"); ab.classList.toggle("on", isAdmin()); } setTxt("#rtxt", isAdmin() ? "Admin ING-3 — sauvegarde locale active." : isTier() ? "Tiers — lecture seule." : "Session non ouverte."); var sb = $("#sndb"); if (sb) sb.innerHTML = ic(PREF.sound ? "snd" : "mute"); var na = $("#navAdmin"); if (na) na.style.display = isTier() ? "none" : ""; updStor(); }
-  function updStor() { var b = $("#sbar"), t = $("#stxt"); if (b) b.style.width = clamp(META.size / 8192 * 100, 2, 100) + "%"; if (t) t.textContent = META.size + " Ko · " + (isAdmin() ? (STORE.local ? "local" : "mémoire") + (LASTSAVE ? " · " + new Date(LASTSAVE).toLocaleTimeString("fr-FR") : "") : isTier() ? "aucun stockage" : "—"); }
-  function runTests() {
-    var T = [];
-    function chk(n, fn, soft) { try { var r = fn(); T.push({ n: n, ok: !!r[0], info: String(r[1] == null ? "" : r[1]), soft: !!soft }); } catch (e) { T.push({ n: n, ok: false, info: "EXCEPTION " + (e && e.message ? e.message : e), soft: true }); } }
-    chk("Noyau initialisé", function () { return [!!DB && Object.keys(MIDX).length > 0, Object.keys(MIDX).length + " modèles"]; });
-    chk("Marques ≥ 50", function () { return [META.counts.b >= 50, META.counts.b]; });
-    chk("Modèles ≥ 250", function () { return [META.counts.m >= 250, META.counts.m]; });
-    chk("Motorisations ≥ 600", function () { return [META.counts.e >= 600, fmt(META.counts.e)]; });
-    chk("Pannes ≥ 35", function () { return [META.counts.f >= 35, META.counts.f]; });
-    chk("TSB ≥ 25", function () { return [META.counts.t >= 25, META.counts.t + " dont " + META.counts.rc + " rappels"]; });
-    chk("Domaines ≥ 12", function () { return [META.counts.dom >= 12, META.counts.dom]; });
-    chk("Familles ≥ 60", function () { return [META.counts.fam >= 60, META.counts.fam]; });
-    Object.keys(REGIONS).forEach(function (r) { chk("Région " + REGIONS[r], function () { return [(META.regions[r] || 0) > 0, (META.regions[r] || 0) + " marques"]; }); });
-    chk("IDs uniques", function () { var s = {}, d = 0; FILES.forEach(function (f) { arr(DB[f[0]]).forEach(function (x) { if (x && s[x.id]) d++; if (x) s[x.id] = 1; }); }); return [d === 0, d + " doublon(s)"]; });
-    chk("Réf modèle→marque", function () { var bs = {}; arr(DB.brands).forEach(function (b) { bs[b.id] = 1; }); return [arr(DB.models).every(function (m) { return bs[m.b]; }), "ok"]; });
-    chk("Réf moteur→modèle", function () { var bad = 0; arr(DB.engines).forEach(function (e) { arr(e.m).forEach(function (i) { if (!MIDX[i]) bad++; }); }); return [bad === 0, bad + " orphelin(s)"]; });
-    chk("Couverture modèles", function () { var bad = arr(DB.models).filter(function (m) { return !(META.perModel[m.id] > 0); }).length; return [bad === 0, bad + " sans moteur"]; });
-    chk("Couverture ≥2 motorisations", function () { return [META.cover >= 60, META.cover + " %"]; }, true);
-    chk("Phases 1-12", function () { return [arr(DB.models).every(function (m) { return m.phase >= 1 && m.phase <= 12; }), "ok"]; });
-    chk("Puissances 1-3000", function () { return [arr(DB.engines).every(function (e) { return e.hp >= 1 && e.hp <= 3000; }), "ok"]; });
-    chk("Énergies normalisées", function () { return [arr(DB.engines).every(function (e) { return !!FU[e.fuel]; }), "ok"]; });
-    chk("Sévérités normalisées", function () { return [arr(DB.faults).every(function (f) { return !!SV[f.sev]; }) && arr(DB.tsb).every(function (t) { return !!SV[t.sev]; }), "ok"]; });
-    chk("Plages km valides", function () { return [arr(DB.faults).every(function (f) { var k = kmOf(f); return k[1] >= k[0]; }), "ok"]; });
-    chk("Pannes complètes", function () { return [arr(DB.faults).every(function (f) { return arr(f.sym).length && f.cause && f.fix; }), "ok"]; });
-    chk("TSB complets", function () { return [arr(DB.tsb).every(function (t) { return t.act && /^\d{4}-\d{2}$/.test(String(t.date)); }), "ok"]; });
-    chk("Pannes corrélées", function () { var bad = arr(DB.faults).filter(function (f) { return engForFault(f).length === 0; }).length; return [bad === 0, bad + " non corrélée(s)"]; }, true);
-    chk("TSB corrélés", function () { var bad = arr(DB.tsb).filter(function (t) { return engForTsb(t).length === 0; }).length; return [bad === 0, bad + " non corrélé(s)"]; }, true);
-    chk("Marques avec bulletin", function () { var hs = {}; arr(DB.tsb).forEach(function (t) { arr(t.b).forEach(function (b) { hs[b] = 1; }); }); var bad = arr(DB.brands).filter(function (b) { return !hs[b.id]; }).length; return [bad === 0, bad + " sans bulletin"]; }, true);
-    chk("Gabarits entretien ≥ 10", function () { return [svcList().length >= 10, svcList().length]; });
-    chk("Plans 200 000 km (marques)", function () { var bad = 0, n = 0; arr(DB.brands).forEach(function (b) { var es = arr(DB.engines).filter(function (e) { var m = modelOf(e); return m && m.b === b.id; }); if (!es.length) { bad++; return; } n++; if (lastKm(buildPlan(es[0], modelOf(es[0]), b)) < KMMAX) bad++; }); return [bad === 0, n + " marques"]; });
-    chk("Plans échantillon", function () { var bad = 0, n = 0; arr(DB.engines).forEach(function (e, i) { if (i % 25) return; n++; var pl = buildPlan(e, modelOf(e), brandOf(e)); if (lastKm(pl) < KMMAX || !arr(pl.visits).length || !arr(arr(pl.visits)[0].ops).length) bad++; }); return [bad === 0, n + " moteurs"]; });
-    ["3008 courroie", "3008 rappel", "AdBlue SCR", "EGR FAP", "EAT8", "Ioniq ICCU", "CVT", "P20E8", "Chine", "Tesla", "HEMI"].forEach(function (q) { chk("Recherche « " + q + " »", function () { var r = omniSearch(q); return [r.length > 0, r.length]; }); });
-    chk("Portail tiers : une seule case", function () { var g = gateHTML("tier"); return [(g.match(/<input/g) || []).length === 1 && (g.match(/type='password'/g) || []).length === 1, "ok"]; });
-    chk("Secret tiers non affiché", function () { return [(gateHTML(null) + gateHTML("tier") + vAdmin()).indexOf(TPWD) < 0, "ok"]; });
-    chk("Mots de passe configurés", function () { return [TPWD.length >= 8 && PWD.length >= 8, "ok"]; });
-    chk("Sauvegarde locale admin", function () { return [typeof saveNow === "function" && typeof backupExport === "function", isAdmin() ? (LASTSAVE ? "dernière " + new Date(LASTSAVE).toLocaleTimeString("fr-FR") : "en attente") : "réservée admin"]; });
-    chk("Purge cache ouverture", function () { return [PURGED.done, purgeLabel()]; });
-    chk("DOM critique", function () { var miss = ["#view", "#rail", "#top", "#dr", "#md", "#ts", "#bgc", "#omni", "#omnires", "#gate", "#status", "#tabs"].filter(function (s) { return !$(s); }); return [miss.length === 0, miss.length ? miss.join(",") : "12/12"]; });
-    chk("Scènes studio", function () { var bad = []; WP.MODES.forEach(function (m) { try { var cv = D.createElement("canvas"); cv.width = 160; cv.height = 100; var cx = cv.getContext("2d"); var tg = { W: 160, H: 100, sc: 1 }; tg.st = WP.mk(tg); var P2 = clone(WP.P); P2.mode = m[0]; WP.draw(cx, 160, 100, 1, P2, tg.st, WP.pal(), 1); } catch (e) { bad.push(m[0]); } }); return [bad.length === 0, bad.length ? bad.join(",") : WP.MODES.length + "/" + WP.MODES.length]; });
-    chk("Parseurs import", function () { var bad = []; [["json", '{"a":[1]}'], ["csv", "x;y\n1;2"], ["xml", "<r><i><x>1</x></i></r>"], ["yaml", "- x: 1"], ["html", "<table><tr><th>x</th></tr><tr><td>1</td></tr></table>"]].forEach(function (p) { try { if (!sniff("t." + p[0], p[1])) bad.push(p[0]); } catch (e) { bad.push(p[0]); } }); return [bad.length === 0, bad.length ? bad.join(",") : "5/5"]; });
-    chk("Rendu 7 vues", function () { var bad = []; [["bord", vBord], ["explorer", vExplorer], ["tech", vTech], ["entretien", vEntretien], ["studio", vStudio], ["admin", vAdmin], ["diag", vDiag]].forEach(function (v) { try { var s = v[1](); if (typeof s !== "string" || !s.length) bad.push(v[0]); } catch (e) { bad.push(v[0]); } }); return [bad.length === 0, bad.length ? bad.join(",") : "7/7"]; });
-    chk("Intégrité référentielle", function () { return [META.integ.ok, META.integ.err.length ? META.integ.err.slice(0, 3).join("|") : "0 erreur"]; });
-    chk("Exceptions capturées", function () { return [ERRORS.length === 0, ERRORS.length ? ERRORS.slice(-2).map(function (e) { return e.m; }).join("|") : "aucune"]; }, true);
-    TESTS = T; updateMeta(); var tl = $("#testList"); if (tl) tl.innerHTML = testListHTML(); return T;
-  }
-  function gateHTML(mode) { var h = "<div class='gcard2'><h1>MECADATA <i>//</i> PORTAIL</h1><p class='gsub'>Cache purgé · " + esc(purgeLabel()) + "</p>"; if (!mode) h += "<div class='gmodes'><div class='gmode' data-act='gateAdmin'><div class='gi'>" + ic("shield", "width:26px;height:26px") + "</div><h3>ADMINISTRATEUR</h3><p>Imports, exports, masses, recherche auto, sauvegarde locale, contrôle des accès, diffusion.</p></div><div class='gmode' data-act='gateTier'><div class='gi'>" + ic("users", "width:26px;height:26px") + "</div><h3>TIERS</h3><p>Consultation protégée par mot de passe. Lecture seule : fiches, pannes, rappels, TSB, plans, studio.</p></div></div><p class='gnote'>Le mot de passe tiers est communiqué hors application et n'est jamais affiché.</p>"; else if (mode === "admin") h += "<div class='gform'><form data-form='admin'><label class='lb'>Mot de passe administrateur</label><input class='inp mono' type='password' name='pwd' id='gatePwd' value='' placeholder='••••••••' autocomplete='new-password' style='text-align:center;letter-spacing:.2em;font-size:16px'><div style='display:flex;gap:8px;margin-top:11px'><button type='button' class='btn ghost' data-act='gateBack'>Retour</button><button class='btn pri' style='flex:1'>OUVRIR ING-3</button></div></form><p class='gnote'>Champ effacé à chaque lancement — aucun mot de passe conservé.</p></div>"; else h += "<div class='gform'><form data-form='tier'><label class='lb'>Mot de passe tiers</label><input class='inp mono' type='password' name='tpwd' id='gateTierPwd' value='' placeholder='••••••••' autocomplete='new-password' style='text-align:center;letter-spacing:.2em;font-size:16px'><div style='display:flex;gap:8px;margin-top:11px'><button type='button' class='btn ghost' data-act='gateBack'>Retour</button><button class='btn pri' style='flex:1'>" + ic("unlock") + "ENTRER EN CONSULTATION</button></div></form><p class='gnote'>Une seule case · saisie masquée · aucune donnée enregistrée.</p></div>"; return h + "</div>"; }
-  function gateShow(mode) { GATE = mode || null; var g = $("#gate"); if (!g) return; g.classList.remove("off"); g.innerHTML = gateHTML(GATE); if (GATE === "admin") { var p = $("#gatePwd"); if (p) { p.value = ""; setTimeout(function () { p.focus(); }, 60); } } if (GATE === "tier") { var t = $("#gateTierPwd"); if (t) { t.value = ""; setTimeout(function () { t.focus(); }, 60); } } }
-  function gateHide() { var g = $("#gate"); if (g) g.classList.add("off"); }
-  function enterAdmin() { MODE = "admin"; gateHide(); DB = clone(SEED); var raw = STORE.get(KEY); if (raw) safe("load", function () { var d = JSON.parse(raw); if (d && d.db && arr(d.db.engines).length) { DB = d.db; AUDIT = arr(d.audit); if (d.prefs) Object.keys(d.prefs).forEach(function (k) { PREF[k] = d.prefs[k]; }); if (d.wp) Object.keys(d.wp).forEach(function (k) { WP.P[k] = d.wp[k]; }); LASTSAVE = num(d.ts, 0); } }, null); FIXES += normalize(DB); recompute(); WP.apply(); audit("adm", "Session ING-3"); saveNow(true); S.view = "bord"; location.hash = "#/bord"; render(); idle(function () { AUTO.maybe(); runTests(); updateMeta(); }, 400); toast("ok", "Session administrateur", "Sauvegarde locale active."); beep("imp"); }
-  function enterTier() { if (REG.tierOpen === false) { toast("err", "Accès tiers coupé"); gateShow("tier"); return; } MODE = "tier"; TIER = "TIER"; TIER_TS = Date.now(); gateHide(); if (!applyTier()) { DB = clone(SEED); normalize(DB); } recompute(); WP.apply(); S.view = "bord"; location.hash = "#/bord"; render(); idle(function () { runTests(); updateMeta(); }, 400); toast("info", "Consultation tiers", "Lecture seule — rév " + num(REG.rev, 0) + "."); beep("ok"); }
-  function tierSync() { if (!isTier()) return; if (REG.tierOpen === false || num(REG.tierKick, 0) > TIER_TS) { MODE = null; TIER = null; gateShow(null); updateMeta(); toast("err", "Session tiers terminée"); return; } if (applyTier()) { recompute(); updateMeta(); render(); toast("info", "Base mise à jour", "rév " + num(REG.rev, 0)); } }
-  function pick(r, names) { if (!r) return undefined; for (var i = 0; i < names.length; i++) { var v = r[names[i]]; if (v !== undefined && v !== null && v !== "") return v; } var map = {}; Object.keys(r).forEach(function (k) { map[nk(k)] = r[k]; }); for (i = 0; i < names.length; i++) { var w = map[nk(names[i])]; if (w !== undefined && w !== null && w !== "") return w; } return undefined; }
-  function detectKind(r) { if (!r || typeof r !== "object") return null; if (pick(r, ["hp", "puissance", "ch", "kw", "code_moteur"]) !== undefined) return "engines"; if (pick(r, ["ref", "reference"]) !== undefined && pick(r, ["date"]) !== undefined) return "tsb"; if (pick(r, ["sev", "severite", "gravite"]) !== undefined) return "faults"; if (pick(r, ["segment", "carrosserie", "phase"]) !== undefined) return "models"; if (pick(r, ["pays", "country"]) !== undefined) return "brands"; return null; }
-  function mapRec(r, kind) { if (kind === "brands") { var n = pick(r, ["n", "name", "nom", "marque"]); if (!n) throw "nom manquant"; var pays = str(pick(r, ["pays", "country"]), "—"); return { id: str(pick(r, ["id"]), "B-" + slug(n)), n: str(n), pays: pays, grp: str(pick(r, ["grp", "group"]), "—"), region: str(pick(r, ["region"]), regionOf(pays)) }; } if (kind === "models") { var mn = pick(r, ["n", "name", "nom", "model", "modele"]); if (!mn) throw "nom manquant"; var br = pick(r, ["b", "brand", "marque"]); if (!br) throw "marque manquante"; return { id: str(pick(r, ["id"]), "M-" + slug(br) + "-" + slug(mn)), b: str(br), bRaw: str(br), n: str(mn), y: [num(pick(r, ["y0", "from"]), 2017), num(pick(r, ["y1", "to"]), YMAX)], seg: str(pick(r, ["seg", "segment"]), "Compacte"), phase: clamp(num(pick(r, ["phase", "gen"]), 1), 1, 12) }; } if (kind === "engines") { var code = pick(r, ["code", "code_moteur"]); if (!code) throw "code manquant"; var lab = pick(r, ["label", "name", "nom"]); if (!lab) throw "libellé manquant"; var hp = num(pick(r, ["hp", "puissance", "ch"]), 0), kw = num(pick(r, ["kw"]), 0); if (!hp && kw) hp = Math.round(kw * 1.3596); if (!(hp > 0 && hp <= 3000)) throw "puissance invalide"; var mr = list(pick(r, ["m", "models", "modeles", "modele"])); if (!mr.length) { var mo = pick(r, ["modele", "model"]); if (mo) mr = [str(mo)]; } if (!mr.length) throw "aucun modèle"; return { id: "", m: [], mRaw: mr, code: str(code), fam: str(pick(r, ["fam", "famille"]), str(code)), label: str(lab), fuel: nfuel(pick(r, ["fuel", "energie"])), disp: num(pick(r, ["disp", "cm3"]), 0), hp: Math.round(hp), nm: num(pick(r, ["nm", "couple"]), 0), kw: Math.round(hp * 0.7355), y: [num(pick(r, ["y0", "from"]), 2017), num(pick(r, ["y1", "to"]), YMAX)], gb: str(pick(r, ["gb", "boite"]), "BVM") }; } if (kind === "faults") { var t = pick(r, ["t", "title", "titre", "panne"]); if (!t) throw "titre manquant"; var c0 = num(pick(r, ["cost0"]), 0), c1 = num(pick(r, ["cost1"]), c0); return { id: "", t: str(t), fam: list(pick(r, ["fam", "familles"])), mt: list(pick(r, ["mt", "modeles"])), ph: list(pick(r, ["ph", "phases"])), sev: nsev(pick(r, ["sev", "severite"])), freq: nfreq(pick(r, ["freq"])), y: [num(pick(r, ["y0"]), 2017), num(pick(r, ["y1"]), YMAX)], km: [num(pick(r, ["km0"]), 0), num(pick(r, ["km1"]), KMMAX)], sym: list(String(pick(r, ["sym", "symptomes"]) || "").replace(/\n/g, "|")), cause: str(pick(r, ["cause"]), "—"), fix: str(pick(r, ["fix", "solution"]), "—"), cost: [c0, Math.max(c0, c1)], status: str(pick(r, ["status", "statut"]), "Surveillance"), dom: str(pick(r, ["dom", "domaine"]), "Moteur") }; } if (kind === "tsb") { var rf = pick(r, ["ref", "reference"]); if (!rf) throw "réf manquante"; var tt = pick(r, ["t", "title", "titre"]); if (!tt) throw "titre manquant"; return { id: "", ref: str(rf), b: list(pick(r, ["b", "marques"])), bRaw: list(pick(r, ["b", "marques"])), fam: list(pick(r, ["fam"])), mt: list(pick(r, ["mt", "modeles"])), ph: list(pick(r, ["ph"])), t: str(tt), date: str(pick(r, ["date"]), "2026-01").slice(0, 7), cat: str(pick(r, ["cat", "categorie"]), "Moteur"), sev: nsev(pick(r, ["sev"])), sum: str(pick(r, ["sum", "resume"]), "—"), act: str(pick(r, ["act", "action"]), "—"), dom: str(pick(r, ["dom"]), str(pick(r, ["cat"]), "Moteur")) }; } throw "type inconnu"; }
-  function resolveAll(g) { var warn = [], drop = [], nb = [], nm = [], bi = {}, bn = {}, mi = {}, mn = {}, seen = {}; arr(DB.brands).forEach(function (b) { bi[b.id] = 1; bn[nk(b.n)] = b.id; }); arr(DB.models).forEach(function (m) { mi[m.id] = 1; mn[nk(m.n)] = m.id; }); function uq(k, base) { var id = base, i = 2; while (seen[k + id] || arr(DB[k]).some(function (x) { return x && x.id === id; })) { id = base + "-" + i; i++; } seen[k + id] = 1; return id; } function bid(v) { if (v == null || v === "") return null; var r = str(v); if (bi[r]) return bi[r]; var l = nk(r); if (bn[l]) return bn[l]; var id = uq("brands", "B-" + slug(r)); bi[id] = 1; bn[l] = 1; nb.push({ id: id, n: r, pays: "—", grp: "—", region: "europe" }); warn.push("marque créée " + r); return id; } function mid(v) { var r = str(v); if (!r) return null; if (mi[r]) return mi[r]; var l = nk(r); if (mn[l]) return mn[l]; var b = null, rest = r; Object.keys(bn).forEach(function (k) { if (!b && l.indexOf(k) === 0 && l.length > k.length + 2) { b = bn[k]; rest = r.slice(k.length).replace(/^[\s\-:]+/, ""); } }); b = b || bid("Import"); var id = uq("models", "M-" + slug(rest || r)); mi[id] = 1; mn[nk(rest || r)] = 1; nm.push({ id: id, b: b, n: rest || r, y: [2017, YMAX], seg: "Compacte", phase: 1 }); warn.push("modèle créé " + (rest || r)); return id; } var out = { brands: [], models: [], engines: [], faults: [], tsb: [] }; arr(g.brands).forEach(function (r) { r.id = r.id || uq("brands", "B-" + slug(r.n)); bi[r.id] = 1; out.brands.push(r); }); arr(g.models).forEach(function (r) { var b = bid(r.bRaw || r.b); if (!b) { drop.push(r.n); return; } r.b = b; delete r.bRaw; r.id = r.id || uq("models", "M-" + slug(b) + "-" + slug(r.n)); mi[r.id] = 1; out.models.push(r); }); arr(g.engines).forEach(function (r) { var ms = arr(r.mRaw).map(mid).filter(Boolean); if (!ms.length) { drop.push(r.label); return; } r.m = ms; delete r.mRaw; r.id = r.id || uq("engines", "E-" + slug(r.code)); out.engines.push(r); }); arr(g.faults).forEach(function (r) { r.id = r.id || uq("faults", "F-" + slug(r.t)); out.faults.push(r); }); arr(g.tsb).forEach(function (r) { r.b = arr(r.bRaw || r.b).map(bid).filter(Boolean); delete r.bRaw; r.id = r.id || uq("tsb", "T-" + slug(r.ref)); out.tsb.push(r); }); out.brands = nb.concat(out.brands); out.models = nm.concat(out.models); return { out: out, warn: warn, drop: drop }; }
-  var KEYFN = { brands: function (x) { return nk(x.n); }, models: function (x) { return nk(x.b + x.n); }, engines: function (x) { return nk(x.code + x.fam + x.label + x.hp); }, faults: function (x) { return nk(x.t); }, tsb: function (x) { return nk(x.ref || x.t); } };
-  function upsert(kind, rec) { var a = arr(DB[kind]), ex = null; if (rec.id) a.forEach(function (x) { if (x && x.id === rec.id) ex = x; }); if (!ex) { var k = KEYFN[kind](rec); a.forEach(function (x) { if (x && KEYFN[kind](x) === k) ex = x; }); } if (ex) { Object.keys(rec).forEach(function (kk) { var v = rec[kk]; if (v == null || v === "") return; if (Array.isArray(v)) { if (v.length) ex[kk] = v; } else ex[kk] = v; }); return "upd"; } if (!rec.id || a.some(function (x) { return x && x.id === rec.id; })) rec.id = uid(kind.charAt(0).toUpperCase()); a.push(rec); DB[kind] = a; return "add"; }
-  function parseDelim(t) { var first = String(t).split(/\r?\n/)[0] || "", cs = [[";", 0], [",", 0], ["\t", 0], ["|", 0]]; cs.forEach(function (c) { c[1] = first.split(c[0]).length - 1; }); cs.sort(function (a, b) { return b[1] - a[1]; }); var d = cs[0][1] > 0 ? cs[0][0] : ",", rows = [], row = [], cur = "", q = false, i; for (i = 0; i < t.length; i++) { var ch = t[i]; if (q) { if (ch === '"') { if (t[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; } else if (ch === '"') q = true; else if (ch === d) { row.push(cur); cur = ""; } else if (ch === "\n" || ch === "\r") { if (ch === "\r" && t[i + 1] === "\n") i++; row.push(cur); cur = ""; if (row.some(function (x) { return String(x).trim(); })) rows.push(row); row = []; } else cur += ch; } row.push(cur); if (row.some(function (x) { return String(x).trim(); })) rows.push(row); if (rows.length < 2) return []; var hd = rows[0].map(function (x) { return String(x).trim(); }); return rows.slice(1).map(function (r) { var o = {}; hd.forEach(function (k, i2) { o[k] = r[i2] === undefined ? "" : r[i2]; }); return o; }); }
-  function sniff(name, text) { var ext = String(name || "").split(".").pop().toLowerCase(), t = String(text || "").trim(); if (ext === "json" || t[0] === "{" || t[0] === "[") { try { return { fmt: "JSON", data: JSON.parse(t) }; } catch (e) {} } if (/^<\?xml/.test(t) || /^<[a-zA-Z]/.test(t)) { if (/<table/i.test(t)) { var recs = safe("h", function () { var doc = new DOMParser().parseFromString(t, "text/html"), tb = doc.querySelector("table"); if (!tb) throw "x"; var trs = tb.querySelectorAll("tr"); if (trs.length < 2) throw "x"; var hd = [].slice.call(trs[0].children).map(function (c) { return c.textContent.trim(); }); var out = []; for (var r = 1; r < trs.length; r++) { var cs = [].slice.call(trs[r].children), o = {}; hd.forEach(function (k, i) { o[k] = cs[i] ? cs[i].textContent.trim() : ""; }); out.push(o); } return out; }, []); if (recs.length) return { fmt: "HTML", records: recs }; } var xr = safe("x", function () { var doc = new DOMParser().parseFromString(t, "application/xml"), kids = [].slice.call(doc.documentElement.children), tc = {}, best = null, bn = 0; kids.forEach(function (k) { tc[k.tagName] = (tc[k.tagName] || 0) + 1; if (tc[k.tagName] > bn) { bn = tc[k.tagName]; best = k.tagName; } }); return kids.filter(function (k) { return k.tagName === best; }).map(function (k) { var o = {}; [].slice.call(k.children).forEach(function (c) { o[c.tagName] = c.textContent.trim(); }); return o; }); }, []); if (xr.length) return { fmt: "XML", records: xr }; } } if (/^\s*-\s+\w+\s*:/.test(t) || ext === "yaml" || ext === "yml") { var out = [], cur = null; t.split(/\r?\n/).forEach(function (l) { if (!l.trim() || /^#/.test(l)) return; var m = l.match(/^\s*-\s*(.*)/); if (m) { if (cur) out.push(cur); cur = {}; var kv = m[1].match(/^([^:]+):\s*(.*)/); if (kv) cur[kv[1].trim()] = kv[2].trim(); return; } var k2 = l.match(/^\s*([^:]+):\s*(.*)/); if (k2 && cur) cur[k2[1].trim()] = k2[2].trim(); }); if (cur) out.push(cur); if (out.length) return { fmt: "YAML", records: out }; } var r2 = parseDelim(t); if (r2.length) return { fmt: ext === "tsv" ? "TSV" : "CSV", records: r2 }; throw "format non reconnu"; }
-  function analyze(parsed, label) { if (!isAdmin()) { toast("err", "Import refusé", "Admin seul."); return; } var rep = $("#impReport"); if (!rep) return; var g = {}, rej = []; if (parsed && parsed.data && Array.isArray(parsed.data)) { var k = detectKind(parsed.data[0] || {}); if (k) g[k] = parsed.data; } else if (parsed && parsed.data && typeof parsed.data === "object") { Object.keys(parsed.data).forEach(function (key) { var v = parsed.data[key]; if (!Array.isArray(v) || !v.length) return; var kk = { marques: "brands", brands: "brands", modeles: "models", models: "models", motorisations: "engines", engines: "engines", pannes: "faults", faults: "faults", fiches: "faults", tsb: "tsb", rappels: "tsb", bulletins: "tsb" }[nk(key)] || detectKind(v[0]); if (kk) g[kk] = (g[kk] || []).concat(v); }); } else if (parsed && parsed.records) { var k2 = detectKind(parsed.records[0] || {}); if (k2) g[k2] = parsed.records; } if (!Object.keys(g).length) { rep.innerHTML = "<div class='rep rj'>Aucune collection reconnue.</div>"; beep("err"); return; } var mp = {}; Object.keys(g).forEach(function (k) { mp[k] = []; arr(g[k]).forEach(function (r, i) { try { mp[k].push(mapRec(r, k)); } catch (e) { rej.push(k + "[" + i + "] " + e); } }); }); var R = resolveAll(mp), ok = 0; Object.keys(R.out).forEach(function (k) { ok += arr(R.out[k]).length; }); IMPORT = R; rep.innerHTML = "<div class='rep'><b class='ok'>" + ok + " prêt(s)</b> · <b class='rj'>" + (rej.length + R.drop.length) + " rejeté(s)</b> · <b class='wn'>" + R.warn.length + " création(s)</b><div class='mono' style='font-size:10px;margin-top:5px'>" + esc(parsed.fmt) + (label ? " · " + esc(label) : "") + "</div></div>"; var ap = $("#impApply"); if (ap) ap.disabled = ok === 0; beep(ok ? "ok" : "err"); }
-  function applyImport() { if (!isAdmin() || !IMPORT) return; snapshot("import"); var ins = 0, up = 0; ["brands", "models", "engines", "faults", "tsb"].forEach(function (k) { arr(IMPORT.out[k]).forEach(function (r) { if (upsert(k, r) === "add") ins++; else up++; }); }); IMPORT = null; mutate("imp", "Import " + ins + "+" + up); saveNow(true); toast("ok", "Import fusionné", ins + " ajouts, " + up + " maj", true); beep("imp"); }
-  function megaSilent(i) { var c = arr(RAW.cand)[i]; if (!c) return; if (!BIDX[c.brand]) { DB.brands.push({ id: c.brand, n: c.brand, pays: "—", grp: "—", region: "europe" }); reindex(); } var mid2 = c.brand + "-" + slug(c.model), m = MIDX[mid2]; if (!m) { DB.models.push({ id: mid2, b: c.brand, n: c.model, y: [c.y0, c.y1], seg: str(SEGS[c.seg], "Compacte"), phase: c.phase }); reindex(); m = MIDX[mid2]; } if (!m) return; if (arr(DB.engines).some(function (e) { return arr(e.m).indexOf(mid2) > -1 && e.code === c.code && e.hp === c.hp; })) return; DB.engines.push(mkEng(arr(DB.engines).length + 1, mid2, c.code, c.code, c.label, c.fuel, c.disp, c.hp, c.nm, c.y0, c.y1, c.gb)); }
-  function parseOffice(name, buf) { if (!isAdmin()) return; var rep = $("#impReport"); if (typeof DecompressionStream === "undefined") { if (rep) rep.innerHTML = "<div class='rep rj'>Décompression indisponible : exportez en CSV/JSON.</div>"; return; } safe("zip", function () { var u8 = new Uint8Array(buf), dv = new DataView(buf), eo = -1, i; for (i = u8.length - 22; i >= 0 && i > u8.length - 66000; i--) if (dv.getUint32(i, true) === 0x06054b50) { eo = i; break; } if (eo < 0) throw "ZIP invalide"; var n = dv.getUint16(eo + 10, true), off = dv.getUint32(eo + 16, true), ent = {}, dec = new TextDecoder("utf-8"); for (i = 0; i < n; i++) { if (dv.getUint32(off, true) !== 0x02014b50) break; var me = dv.getUint16(off + 10, true), cs = dv.getUint32(off + 20, true), nl = dv.getUint16(off + 28, true), el = dv.getUint16(off + 30, true), cl = dv.getUint16(off + 32, true), lo = dv.getUint32(off + 42, true); var nm = dec.decode(u8.subarray(off + 46, off + 46 + nl)), l1 = dv.getUint16(lo + 26, true), l2 = dv.getUint16(lo + 28, true), ds = lo + 30 + l1 + l2; var comp = u8.subarray(ds, ds + cs); ent[nm] = me === 0 ? Promise.resolve(comp) : new Response(new Blob([comp]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer().then(function (b) { return new Uint8Array(b); }); off += 46 + nl + el + cl; } Promise.all(Object.keys(ent).map(function (k) { return ent[k].then(function (d) { return [k, d]; }); })).then(function (lst) { var mp = {}; lst.forEach(function (p) { mp[p[0]] = p[1]; }); var ods = !!mp["content.xml"]; var key = ods ? "content.xml" : (Object.keys(mp).filter(function (k) { return /sheet1\.xml$/.test(k); })[0] || Object.keys(mp)[0]); var xml = dec.decode(mp[key] || new Uint8Array()); var rows = []; var doc = new DOMParser().parseFromString(xml, "application/xml"); if (ods) { var tb = doc.getElementsByTagName("table:table")[0]; if (tb) arr(tb.getElementsByTagName("table:table-row")).forEach(function (r) { var a = []; arr(r.getElementsByTagName("table:table-cell")).forEach(function (c) { var ps = c.getElementsByTagName("text:p"), s = ""; for (var p = 0; p < ps.length; p++) s += ps[p].textContent; var rp = Math.min(num(c.getAttribute("table:number-columns-repeated"), 1), 40); for (var q = 0; q < rp; q++) a.push(s); }); rows.push(a); }); } else { arr(doc.getElementsByTagName("row")).forEach(function (r) { var a = []; arr(r.getElementsByTagName("c")).forEach(function (c) { var ref = c.getAttribute("r") || "", ci = 0, mm = ref.match(/^([A-Z]+)/); if (mm) { for (var x = 0; x < mm[1].length; x++) ci = ci * 26 + (mm[1].charCodeAt(x) - 64); ci--; } var v = c.getElementsByTagName("v")[0]; a[ci] = v ? v.textContent : ""; }); rows.push(a); }); } if (rows.length < 2) throw "aucune ligne"; var hd = arr(rows[0]).map(function (x) { return str(x); }); var recs = []; for (var r2 = 1; r2 < rows.length; r2++) { var o = {}; hd.forEach(function (k, i2) { o[k] = arr(rows[r2])[i2] === undefined ? "" : rows[r2][i2]; }); recs.push(o); } analyze({ fmt: ods ? "ODS" : "XLSX", records: recs }, name); }).catch(function (e) { if (rep) rep.innerHTML = "<div class='rep rj'>" + esc(String(e)) + "</div>"; }); }, null); }
-  function bind() {
-    D.addEventListener("click", function (ev) {
-      var el = ev.target.closest ? ev.target.closest("[data-act]") : null;
-      if (!el) { if (!(ev.target.closest && ev.target.closest(".omni"))) omniClose(); return; }
-      var a = el.dataset.act, id = el.dataset.id;
-      if (a === "gateAdmin") { gateShow("admin"); return; }
-      if (a === "gateTier") { regLoad(); gateShow("tier"); return; }
-      if (a === "gateBack") { gateShow(null); return; }
-      if (a === "purge") { purgeCache(false); toast("ok", "Cache purgé", purgeLabel()); setTimeout(function () { location.reload(); }, 400); return; }
-      if (a === "purgeAll") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } purgeCache(true); setTimeout(function () { location.reload(); }, 400); return; }
-      if (a === "saveNow") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } saveNow(false); beep("ok"); return; }
-      if (a === "backupExp") { backupExport(); return; }
-      if (a === "backupImp") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } var bf = $("#bakFile"); if (bf) bf.click(); return; }
-      if (a === "autoNow") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } var r = AUTO.sweep("manuel", false); toast(r.total ? "ok" : "info", "Recherche auto massive", r.total ? "+" + r.m + " modèles, +" + r.e + " mot., +" + r.f + " pannes, +" + r.t + " bulletins" : "Base déjà complète."); saveNow(true); render(); beep("imp"); return; }
-      if (a === "autoFull") { if (!isAdmin()) return; snapshot("auto-full"); var r2 = AUTO.sweep("cycle 30 jours", true); toast("ok", "Cycle complet terminé", r2.total + " complément(s)."); saveNow(true); render(); beep("imp"); return; }
-      if (a === "autoToggle") { if (!isAdmin()) return; AUTO.load(); AUTO.st.onLaunch = !AUTO.st.onLaunch; AUTO.saveSt(); render(); return; }
-      if (a === "tierOpen") { if (!isAdmin()) return; REG.tierOpen = !!el.checked; if (!REG.tierOpen) REG.tierKick = Date.now(); regLog(REG.tierOpen ? "Accès tiers autorisé" : "Accès tiers coupé"); regSave(); render(); return; }
-      if (a === "kickTier") { if (!isAdmin()) return; REG.tierKick = Date.now(); regLog("Révocation session tiers"); regSave(); toast("warn", "Session tiers révoquée"); render(); return; }
-      if (a === "omniSeed") { var o = $("#omni"); if (o) { o.value = el.dataset.q; S.omni.q = el.dataset.q; o.focus(); omniRender(); } return; }
-      if (a === "omniHit") { omniGo(el.dataset.kind, id); return; }
-      if (a === "msearch") { var q = prompt("Recherche :"); if (q) { var o2 = $("#omni"); if (o2) { o2.value = q; S.omni.q = q; omniRender(); o2.focus(); } } return; }
-      if (a === "snd") { PREF.sound = !PREF.sound; markDirty(); updateMeta(); return; }
-      if (a === "run") { WP.set("run", !WP.P.run); return; }
-      if (a === "goStudio") { location.hash = "#/studio"; return; }
-      if (a === "goAdmin") { if (isAdmin()) location.hash = "#/admin"; else gateShow("admin"); return; }
-      if (a === "goDiag") { location.hash = "#/diagnostic"; return; }
-      if (a === "goPlan") { location.hash = "#/entretien"; return; }
-      if (a === "runTests") { runTests(); location.hash = "#/diagnostic"; render(); return; }
-      if (a === "expTests") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } download("rapport_tests.json", JSON.stringify({ cache: PURGED, auto: AUTO.st, tests: TESTS }, null, 2)); return; }
-      if (a === "integrity") { var g = META.integ; openModal("<div class='mh'><h3>Intégrité</h3><button class='tb' data-act='mclose'>" + ic("x") + "</button></div><div class='mb2'><div class='rep'><b class='" + (g.ok ? "ok" : "rj") + "'>" + (g.ok ? "INTÈGRE" : "ERREURS") + "</b> " + g.pct + "%<ul>" + g.err.slice(0, 20).map(function (e) { return "<li class='rj'>" + esc(e) + "</li>"; }).join("") + "</ul></div></div><div class='mf'><button class='btn pri' data-act='mclose'>Fermer</button></div>", "slim"); return; }
-      if (a === "undo") { doUndo(); return; }
-      if (a === "mclose") { closeModal(); return; }
-      if (a === "mscrim") { if (ev.target === el) closeModal(); return; }
-      if (a === "drclose") { closeDrawer(); return; }
-      if (a === "drback") { var hb = arr(S.drawer.hist).pop(); if (hb) { S.drawer.type = hb.type; S.drawer.id = hb.id; S.drawer.tab = hb.tab; renderDrawer(); } return; }
-      if (a === "drtab") { S.drawer.tab = el.dataset.t; renderDrawer(); return; }
-      if (a === "openEng") { omniClose(); openDrawer("engine", id, !!S.drawer); return; }
-      if (a === "openFault") { omniClose(); openDrawer("fault", id, !!S.drawer); return; }
-      if (a === "openTsb") { omniClose(); openDrawer("tsb", id, !!S.drawer); return; }
-      if (a === "selEng") { var e = EIDX[id]; if (e) { var m = modelOf(e); S.sel = { b: m ? m.b : "", m: m ? m.id : "", e: id }; closeDrawer(); location.hash = "#/entretien"; } return; }
-      if (a === "expEng") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } var xe = EIDX[id]; if (xe) download("fiche_" + xe.code + ".json", JSON.stringify({ engine: xe, plan: buildPlan(xe, modelOf(xe), brandOf(xe)) }, null, 2)); return; }
-      if (a === "ffuel") { var k = el.dataset.k, i = arr(S.f.fuel).indexOf(k); if (i > -1) S.f.fuel.splice(i, 1); else S.f.fuel.push(k); S.shown = 48; render(); return; }
-      if (a === "resetSel") { S.sel = { b: "", m: "", e: "" }; S.f = { q: "", fuel: [], region: "", sort: "brand" }; render(); return; }
-      if (a === "more") { S.shown += 48; render(); return; }
-      if (a === "techTab") { S.tech.tab = el.dataset.t; render(); return; }
-      if (a === "admTab") { if (!isAdmin()) return; S.adm.tab = el.dataset.t; render(); return; }
-      if (a === "expAll") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } download("mecadata_base.json", JSON.stringify(DB, null, 2)); return; }
-      if (a === "fileExp") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } download(el.dataset.k + ".json", JSON.stringify(arr(DB[el.dataset.k]), null, 2)); return; }
-      if (a === "publish") { publish(false); render(); return; }
-      if (a === "dzPick") { if (!isAdmin()) { toast("err", "Réservé admin"); return; } var f = $("#impFile"); if (f) f.click(); return; }
-      if (a === "impAnalyze") { if (!isAdmin()) return; var ta = $("#impText"); if (!ta || !ta.value.trim()) { var rp = $("#impReport"); if (rp) rp.innerHTML = "<div class='rep rj'>Aucune donnée.</div>"; return; } try { analyze(sniff("paste.txt", ta.value), "collage"); } catch (e) { var rp2 = $("#impReport"); if (rp2) rp2.innerHTML = "<div class='rep rj'>" + esc(String(e)) + "</div>"; } return; }
-      if (a === "impApply") { applyImport(); return; }
-      if (a === "megaAdd") { if (!isAdmin()) return; megaSilent(num(el.dataset.i, -1)); mutate("mega", "Candidat intégré"); return; }
-      if (a === "megaAll") { if (!isAdmin()) return; snapshot("mega"); var q2 = nk(S.adm.mega); arr(RAW.cand).filter(function (c) { return c && (!q2 || nk(c.brand + c.model + c.code + c.label).indexOf(q2) > -1); }).forEach(function (c) { megaSilent(arr(RAW.cand).indexOf(c)); }); mutate("mega", "Mise à jour massive"); saveNow(true); toast("ok", "Méga-base enrichie"); return; }
-      if (a === "askReset") { confirmModal("Réinitialiser ?", "Base remplacée par l'usine.", "doReset", "Réinitialiser"); return; }
-      if (a === "doReset") { closeModal(); snapshot("reset"); DB = clone(SEED); normalize(DB); mutate("del", "Base usine"); saveNow(true); return; }
-      if (a === "logout") { MODE = null; TIER = null; gateShow(null); updateMeta(); return; }
-      if (a === "stMode") { WP.set("mode", el.dataset.m); return; }
-      if (a === "stTheme") { WP.P.useCustom = false; WP.set("theme", el.dataset.t); return; }
-      if (a === "stPreset") { var ps = WP.PRESETS[el.dataset.n]; if (ps) { Object.keys(ps).forEach(function (k) { WP.P[k] = ps[k]; }); WP.apply(); WP.resize(); render(); } return; }
-      if (a === "stRandom") { WP.randomize(); render(); return; }
-      if (a === "stReset") { WP.reset(); render(); return; }
-      if (a === "stRun") { WP.set("run", !WP.P.run); render(); return; }
-      if (a === "stDir") { WP.set("dir", WP.P.dir > 0 ? -1 : 1); render(); return; }
-      if (a === "stCustom") { WP.P.useCustom = !!el.checked; WP.drawAll(); markDirty(); WP.sync(); return; }
+/* ---------- studio fonds dynamiques ---------- */
+var WP = {
+  P: { mode: "nebula", theme: "diag", useCustom: false, custom: { bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" }, density: 64, count: 150, speed: 100, turb: 38, scale: 66, glow: 60, blur: 0, stroke: 1.4, drift: 40, dir: 1, quality: "std", grid: true, run: true, bg: true },
+  TH: {
+    diag: { n: "Diagnostic", bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" },
+    torque: { n: "Couple", bg: "#0B0603", a: "#FFAF2E", b: "#FF7A3D", c: "#FF4D5E", d: "#FFD98A" },
+    acid: { n: "Acide", bg: "#040A06", a: "#A8E63C", b: "#43E08B", c: "#25D4EE", d: "#E4FF7A" },
+    plasma: { n: "Plasma", bg: "#08040F", a: "#E45CFF", b: "#8F7CFF", c: "#25D4EE", d: "#FF6FB1" },
+    ocean: { n: "Océan", bg: "#02080C", a: "#19B8A6", b: "#4D8DFF", c: "#25D4EE", d: "#7CE8D0" },
+    steel: { n: "Acier", bg: "#070A0E", a: "#9FB2C8", b: "#5F7288", c: "#25D4EE", d: "#E6EEF9" }
+  },
+  MODES: [["nebula", "NEBULA"], ["flux", "FLUX"], ["grid", "GRILLE"], ["radar", "RADAR"], ["scope", "SCOPE"], ["tunnel", "TUNNEL"]],
+  PRESETS: {
+    "Nebula or": { mode: "nebula", theme: "diag", speed: 80, glow: 66 },
+    "Acide rapide": { mode: "tunnel", theme: "acid", speed: 140, glow: 62 },
+    "Radar atelier": { mode: "radar", theme: "acid", speed: 85, glow: 70 },
+    "Scope 4 cyl": { mode: "scope", theme: "acid", speed: 130, turb: 52 },
+    "Acier calme": { mode: "grid", theme: "steel", speed: 60, glow: 34 }
+  },
+  targets: [], raf: 0, t: 0, last: 0, running: false, fails: 0,
+  pal: function () {
+    if (this.P.useCustom) {
+      var c = this.P.custom || {};
+      return { n: "Perso", bg: str(c.bg, "#04070D"), a: str(c.a, "#FFD60A"), b: str(c.b, "#25D4EE"), c: str(c.c, "#E45CFF"), d: str(c.d, "#43E08B") };
+    }
+    return this.TH[this.P.theme] || this.TH.diag;
+  },
+  init: function () {
+    var cv = $("#bgc");
+    if (cv) {
+      var cx = safe("ctx", function () { return cv.getContext("2d"); }, null);
+      if (cx) { this.targets.push({ cv: cv, ctx: cx, sc: 0.5, W: 0, H: 0, st: null, key: "" }); }
+    }
+    this.resize();
+    var s = this;
+    window.addEventListener("resize", deb(function () { s.resize(); }, 150));
+    D.addEventListener("visibilitychange", function () {
+      if (D.hidden) { s.stop(); } else if (s.P.run) { s.start(); }
     });
-    D.addEventListener("input", function (ev) { var t = ev.target; if (!t) return; if (t.id === "omni") { S.omni.q = t.value; omniRender(); return; } if (t.dataset && t.dataset.tfilter) { S.tf = t.value; var tl = $("#testList"); if (tl) tl.innerHTML = testListHTML(); return; } if (t.dataset && t.dataset.c) { WP.setCustom(t.dataset.c, t.value); return; } if (t.dataset && t.dataset.p) { var k = t.dataset.p; WP.set(k, t.type === "checkbox" ? t.checked : (t.tagName === "SELECT" ? (k === "dir" ? num(t.value, 1) : t.value) : num(t.value, 0))); return; } if (t.dataset && t.dataset.f) { S.f[t.dataset.f] = t.value; if (t.dataset.f === "region") S.sel = { b: "", m: "", e: "" }; S.shown = 48; deb(render, 140)(); return; } if (t.dataset && t.dataset.tf) { S.tech[t.dataset.tf] = t.value; if (t.dataset.tf === "region") { S.tech.brand = ""; S.tech.model = ""; } if (t.dataset.tf === "brand") S.tech.model = ""; deb(render, 160)(); return; } if (t.dataset && t.dataset.mega) { S.adm.mega = t.value; deb(render, 160)(); return; } if (t.dataset && t.dataset.calc) { S.calc[t.dataset.calc] = num(t.value, 0); var dl = $("#dueList"), e = selEngine(); if (dl && e) dl.innerHTML = dueHTML(buildPlan(e, modelOf(e), brandOf(e))); return; } });
-    D.addEventListener("change", function (ev) {
-      var t = ev.target; if (!t) return;
-      if (t.dataset && t.dataset.sel) { var k = t.dataset.sel; S.sel[k] = t.value; if (k === "b") { S.sel.m = ""; S.sel.e = ""; } if (k === "m") S.sel.e = ""; S.shown = 48; render(); return; }
-      if (t.dataset && t.dataset.calc === "sev") { S.calc.sev = num(t.value, 1); var dl = $("#dueList"), e = selEngine(); if (dl && e) dl.innerHTML = dueHTML(buildPlan(e, modelOf(e), brandOf(e))); return; }
-      if (t.dataset && t.dataset.act === "liveToggle") { if (!isAdmin()) return; REG.live = !!t.checked; regLog("Diffusion " + (REG.live ? "ON" : "OFF")); if (REG.live) publish(true); regSave(); render(); return; }
-      if (t.id === "bakFile" && t.files && t.files[0]) { if (!isAdmin()) return; var rd = new FileReader(); rd.onload = function () { safe("bak", function () { backupRestore(JSON.parse(String(rd.result))); }, null); }; rd.readAsText(t.files[0]); return; }
-      if (t.id === "impFile" && t.files && t.files[0]) { if (!isAdmin()) { toast("err", "Réservé admin"); return; } var f = t.files[0], ext = f.name.split(".").pop().toLowerCase(), rd2 = new FileReader(); if (ext === "xlsx" || ext === "ods") { rd2.onload = function () { parseOffice(f.name, rd2.result); }; rd2.readAsArrayBuffer(f); } else { rd2.onload = function () { var ta = $("#impText"); if (ta) ta.value = String(rd2.result).slice(0, 200000); try { analyze(sniff(f.name, String(rd2.result)), f.name); } catch (e) {} }; rd2.readAsText(f); } return; }
+    this.apply();
+  },
+  attach: function (cv) {
+    this.targets = this.targets.filter(function (t) { return t.cv.id === "bgc"; });
+    if (cv) {
+      var cx = safe("c2", function () { return cv.getContext("2d"); }, null);
+      if (cx) { this.targets.push({ cv: cv, ctx: cx, sc: 1, W: 0, H: 0, st: null, key: "", pv: true }); }
+    }
+    this.resize();
+    if (this.P.run) { this.start(); } else { this.drawAll(); }
+  },
+  detach: function () {
+    this.targets = this.targets.filter(function (t) { return !t.pv; });
+  },
+  resize: function () {
+    var d = Math.min(window.devicePixelRatio || 1, this.P.quality === "eco" ? 1 : 1.5);
+    this.targets.forEach(function (t) {
+      var w = t.pv ? (t.cv.clientWidth || 640) : window.innerWidth;
+      var h = t.pv ? (t.cv.clientHeight || 330) : window.innerHeight;
+      t.W = Math.max(1, w);
+      t.H = Math.max(1, h);
+      t.cv.width = Math.round(t.W * d);
+      t.cv.height = Math.round(t.H * d);
+      safe("tr", function () { t.ctx.setTransform(d, 0, 0, d, 0, 0); }, null);
+      t.key = "";
     });
-    D.addEventListener("submit", function (ev) { var form = ev.target.closest ? ev.target.closest("[data-form]") : null; if (!form) return; ev.preventDefault(); var fd = new FormData(form); if (form.dataset.form === "admin") { var p = $("#gatePwd"); if (p) p.value = ""; if (fd.get("pwd") === PWD) enterAdmin(); else { toast("err", "Mot de passe incorrect"); beep("err"); gateShow("admin"); } return; } if (form.dataset.form === "tier") { var inp = $("#gateTierPwd"); var val = String(fd.get("tpwd") || ""); if (inp) inp.value = ""; regLoad(); if (REG.tierOpen === false) { toast("err", "Accès tiers coupé"); gateShow("tier"); return; } if (val !== TPWD) { toast("err", "Mot de passe tiers incorrect"); beep("err"); gateShow("tier"); return; } enterTier(); return; } });
-    D.addEventListener("dragover", function (ev) { var dz = ev.target.closest ? ev.target.closest("#dz") : null; if (dz && isAdmin()) { ev.preventDefault(); dz.classList.add("over"); } });
-    D.addEventListener("drop", function (ev) { var dz = ev.target.closest ? ev.target.closest("#dz") : null; if (!dz) return; ev.preventDefault(); dz.classList.remove("over"); if (!isAdmin()) { toast("err", "Réservé admin"); return; } var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { try { analyze(sniff(f.name, String(rd.result)), f.name); } catch (e) {} }; rd.readAsText(f); });
-    D.addEventListener("keydown", function (ev) { if (ev.key === "Escape") { if (modalOpen) closeModal(); else if (S.drawer) closeDrawer(); else omniClose(); return; } if (ev.key === "/" && !/input|textarea|select/i.test(ev.target.tagName)) { var o = $("#omni"); if (o && MODE) { ev.preventDefault(); o.focus(); } return; } if (ev.target && ev.target.id === "omni") { var box = $("#omnires"), els = box ? $$(".hit", box) : []; if (ev.key === "ArrowDown" && els.length) { ev.preventDefault(); S.omni.idx = clamp(S.omni.idx + 1, 0, els.length - 1); els.forEach(function (x, i) { x.classList.toggle("sel", i === S.omni.idx); }); } else if (ev.key === "ArrowUp" && els.length) { ev.preventDefault(); S.omni.idx = clamp(S.omni.idx - 1, 0, els.length - 1); els.forEach(function (x, i) { x.classList.toggle("sel", i === S.omni.idx); }); } else if (ev.key === "Enter") { ev.preventDefault(); var p = els[S.omni.idx] || els[0]; if (p) omniGo(p.dataset.kind, p.dataset.id); } } });
-    window.addEventListener("hashchange", function () { if (!MODE) return; route(); });
-    window.addEventListener("storage", function (ev) { if (ev.key === AKEY) { regLoad(); if (isTier()) tierSync(); else if (isAdmin()) { updateMeta(); if (S.view === "admin") render(); } } if (ev.key === PKEY && isTier()) tierSync(); });
-    window.addEventListener("pagehide", function () { if (isAdmin()) saveNow(true); });
-    D.addEventListener("visibilitychange", function () { if (D.hidden && isAdmin()) saveNow(true); });
-    setInterval(function () { var c = $("#clk"); if (c) c.textContent = new Date().toLocaleTimeString("fr-FR"); }, 1000);
-    setInterval(function () { if (isAdmin() && DIRTY) saveNow(true); }, 15000);
-    setInterval(function () { if (!CH && isTier()) { regLoad(); tierSync(); } }, 2000);
+    this.drawAll();
+  },
+  set: function (k, v) {
+    this.P[k] = v;
+    if (k === "quality") { this.resize(); }
+    if ("mode count scale density".indexOf(k) > -1) {
+      this.targets.forEach(function (t) { t.key = ""; });
+    }
+    this.fx();
+    if (k === "run") {
+      if (v) { this.start(); } else { this.stop(); }
+    }
+    this.drawAll();
+    save();
+    this.sync();
+  },
+  setCustom: function (k, v) {
+    if (!this.P.custom) { this.P.custom = {}; }
+    this.P.custom[k] = v;
+    this.P.useCustom = true;
+    this.drawAll();
+    save();
+    this.sync();
+  },
+  randomize: function () {
+    var ms = this.MODES.map(function (m) { return m[0]; });
+    var ts = Object.keys(this.TH);
+    var R = Math.random;
+    this.P.mode = ms[Math.floor(R() * ms.length)];
+    this.P.theme = ts[Math.floor(R() * ts.length)];
+    this.P.speed = 40 + Math.round(R() * 140);
+    this.P.glow = 20 + Math.round(R() * 75);
+    this.P.count = 60 + Math.round(R() * 240);
+    this.P.dir = R() < 0.5 ? 1 : -1;
+    this.apply();
+    this.resize();
+    save();
+  },
+  reset: function () {
+    this.P = { mode: "nebula", theme: "diag", useCustom: false, custom: { bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" }, density: 64, count: 150, speed: 100, turb: 38, scale: 66, glow: 60, blur: 0, stroke: 1.4, drift: 40, dir: 1, quality: "std", grid: true, run: true, bg: true };
+    this.apply();
+    this.resize();
+    save();
+  },
+  fx: function () {
+    var bc = $("#bgc");
+    if (bc) {
+      bc.style.opacity = this.P.bg ? "1" : "0";
+      bc.style.filter = this.P.blur ? "blur(" + this.P.blur + "px)" : "none";
+    }
+  },
+  apply: function () {
+    this.fx();
+    this.targets.forEach(function (t) { t.key = ""; });
+    if (this.P.run && !D.hidden) { this.start(); } else { this.stop(); this.drawAll(); }
+    this.sync();
+  },
+  start: function () {
+    if (this.running || !this.targets.length) { return; }
+    this.running = true;
+    this.last = performance.now();
+    var s = this;
+    var loop = function (n) {
+      if (!s.running) { return; }
+      var dt = Math.min(0.05, (n - s.last) / 1000);
+      s.last = n;
+      s.t += dt * (s.P.speed / 100) * s.P.dir;
+      s.drawAll();
+      s.raf = requestAnimationFrame(loop);
+    };
+    this.raf = requestAnimationFrame(loop);
+  },
+  stop: function () {
+    this.running = false;
+    cancelAnimationFrame(this.raf);
+  },
+  mk: function (t) {
+    var I = this.P.density / 100;
+    var n = Math.round(clamp(this.P.count * (t.W * t.H) / (1280 * 720), 12, 300) * t.sc);
+    var i, p = [], bl = [], ln = [];
+    for (i = 0; i < n; i++) {
+      p.push({ x: Math.random() * t.W, y: Math.random() * t.H, vx: (0.2 + Math.random() * 0.8) * (Math.random() < 0.5 ? -1 : 1), vy: (Math.random() - 0.5) * 0.4, r: 0.8 + Math.random() * 1.9, ph: Math.random() * 6.28, k: Math.floor(Math.random() * 4) });
+    }
+    for (i = 0; i < 16 * I + 5; i++) { bl.push({ a: Math.random() * 6.28, d: 0.14 + Math.random() * 0.82, h: 0 }); }
+    for (i = 0; i < 9 * I + 3; i++) { ln.push({ h: Math.random() < 0.5, pos: Math.random(), sp: 0.001 + Math.random() * 0.002, o: Math.random() }); }
+    return { p: p, bl: bl, ln: ln };
+  },
+  drawAll: function () {
+    var s = this;
+    this.targets.forEach(function (t) {
+      if (!t.W || !t.H) { return; }
+      if (!t.pv && !s.P.bg) { return; }
+      var k = [s.P.mode, s.P.count, s.P.scale, t.W, t.H].join("|");
+      if (t.key !== k) { t.st = s.mk(t); t.key = k; }
+      try {
+        s.draw(t.ctx, t.W, t.H, s.t, s.P, t.st, s.pal(), t.sc);
+      } catch (e) {
+        s.fails++;
+        if (s.fails > 3) { s.P.mode = "grid"; s.fails = 0; t.key = ""; }
+      }
+    });
+  },
+  draw: function (c, W, H, t, P, st, TH, sc) {
+    var I = P.density / 100, TB = P.turb / 100, G = P.glow / 100, LW = P.stroke, DR = 0.2 + P.drift / 100, SP = P.speed / 100;
+    var cols = [TH.a, TH.b, TH.c, TH.d];
+    var i, j;
+    function hx(a) { return clamp(Math.round(a * 255), 0, 255).toString(16).padStart(2, "0"); }
+    function glow(v) { c.shadowColor = v; c.shadowBlur = G * 16; }
+    function ng() { c.shadowBlur = 0; }
+    c.globalCompositeOperation = "source-over";
+    c.globalAlpha = 1;
+    c.fillStyle = P.mode === "scope" ? TH.bg + "2E" : TH.bg;
+    c.fillRect(0, 0, W, H);
+    c.lineWidth = LW;
+    if (P.grid && P.mode !== "nebula") {
+      var s0 = Math.max(18, P.scale);
+      var o0 = (t * 9 * DR) % s0;
+      c.strokeStyle = TH.a + "12";
+      c.beginPath();
+      for (i = -o0; i < W + s0; i += s0) { c.moveTo(i, 0); c.lineTo(i, H); }
+      for (j = -o0 * 0.6; j < H + s0; j += s0) { c.moveTo(0, j); c.lineTo(W, j); }
+      c.stroke();
+    }
+    var pts = arr(st && st.p);
+    if (P.mode === "nebula") {
+      c.globalCompositeOperation = "lighter";
+      for (i = 0; i < 4; i++) {
+        var bx = W * (0.3 + 0.4 * Math.sin(t * 0.2 * DR + i * 1.7));
+        var by = H * (0.3 + 0.4 * Math.cos(t * 0.16 * DR + i));
+        var br = Math.min(W, H) * 0.35;
+        var gg = c.createRadialGradient(bx, by, 0, bx, by, br);
+        gg.addColorStop(0, cols[i % 4] + hx(0.18 * I + 0.05));
+        gg.addColorStop(1, cols[i % 4] + "00");
+        c.fillStyle = gg;
+        c.fillRect(0, 0, W, H);
+      }
+      c.globalCompositeOperation = "source-over";
+      for (i = 0; i < pts.length; i += 3) {
+        var d = pts[i];
+        d.ph += 0.02 * SP;
+        d.y -= 0.12 * SP * DR;
+        if (d.y < -4) { d.y = H + 4; }
+        c.fillStyle = TH.d + hx(0.15 * I + 0.04);
+        c.fillRect(d.x, d.y, d.r, d.r);
+      }
+    } else if (P.mode === "flux") {
+      for (i = 0; i < pts.length; i++) {
+        var p = pts[i];
+        p.x += p.vx * SP * 1.7 + Math.sin(t * 0.6 + p.ph) * TB * 0.7;
+        p.y += p.vy * SP * 1.7;
+        if (p.x < -12) { p.x = W + 12; }
+        if (p.x > W + 12) { p.x = -12; }
+        if (p.y < -12) { p.y = H + 12; }
+        if (p.y > H + 12) { p.y = -12; }
+      }
+      var R = Math.max(48, P.scale * 1.4);
+      var R2 = R * R;
+      for (i = 0; i < pts.length; i++) {
+        for (j = i + 1; j < pts.length; j++) {
+          var a = pts[i], b = pts[j];
+          var dx = a.x - b.x, dy = a.y - b.y;
+          var d2 = dx * dx + dy * dy;
+          if (d2 < R2) {
+            c.strokeStyle = TH.a + hx((1 - d2 / R2) * 0.14 * I);
+            c.beginPath();
+            c.moveTo(a.x, a.y);
+            c.lineTo(b.x, b.y);
+            c.stroke();
+          }
+        }
+      }
+      for (i = 0; i < pts.length; i++) {
+        var q = pts[i];
+        glow(cols[q.k]);
+        c.fillStyle = cols[q.k];
+        c.globalAlpha = 0.7 * I + 0.15;
+        c.beginPath();
+        c.arc(q.x, q.y, q.r, 0, 6.283);
+        c.fill();
+        c.globalAlpha = 1;
+        ng();
+      }
+    } else if (P.mode === "grid") {
+      var ln = arr(st && st.ln);
+      for (i = 0; i < ln.length; i++) {
+        var l = ln[i];
+        l.o = (l.o + l.sp * SP * 2 + 1) % 1;
+        var px = l.h ? W * l.o : H * l.o;
+        glow(TH.a);
+        c.fillStyle = TH.a + "CC";
+        if (l.h) { c.fillRect(px, l.pos * H, 26, LW + 1); } else { c.fillRect(l.pos * W, px, LW + 1, 26); }
+        ng();
+      }
+      for (i = 0; i < pts.length; i += 2) {
+        var z = pts[i];
+        z.ph += 0.02 * SP;
+        c.strokeStyle = TH.a + hx(0.25 * I);
+        c.beginPath();
+        c.moveTo(z.x - 5, z.y);
+        c.lineTo(z.x + 5, z.y);
+        c.moveTo(z.x, z.y - 5);
+        c.lineTo(z.x, z.y + 5);
+        c.stroke();
+      }
+    } else if (P.mode === "radar") {
+      var cx = W * 0.6, cy = H * 0.45;
+      var RR = Math.min(W, H) * 0.4;
+      var ang = (t * 0.8 * SP) % 6.283;
+      c.strokeStyle = TH.a + "22";
+      for (i = 1; i <= 4; i++) {
+        c.beginPath();
+        c.arc(cx, cy, RR * i / 4, 0, 6.283);
+        c.stroke();
+      }
+      glow(TH.a);
+      c.strokeStyle = TH.a;
+      c.beginPath();
+      c.moveTo(cx, cy);
+      c.lineTo(cx + Math.cos(ang) * RR, cy + Math.sin(ang) * RR);
+      c.stroke();
+      ng();
+      var bl = arr(st && st.bl);
+      for (i = 0; i < bl.length; i++) {
+        var bp = bl[i];
+        var da = ((ang - bp.a) % 6.283 + 6.283) % 6.283;
+        if (da < 0.07) { bp.h = 1; }
+        bp.h *= 0.986;
+        if (bp.h > 0.02) {
+          c.fillStyle = TH.d + hx(bp.h);
+          c.beginPath();
+          c.arc(cx + Math.cos(bp.a) * RR * bp.d, cy + Math.sin(bp.a) * RR * bp.d, 3, 0, 6.283);
+          c.fill();
+        }
+      }
+    } else if (P.mode === "scope") {
+      for (var k2 = 0; k2 < 4; k2++) {
+        var base = H * (k2 + 0.6) / 4.6;
+        var amp = H / 12.4;
+        var col = cols[k2];
+        glow(col);
+        c.strokeStyle = col;
+        c.beginPath();
+        for (i = 0; i <= W; i += 3) {
+          var u = i / W * 12 + t * 1.6 * SP + k2 * 1.3;
+          var y = base + Math.sin(u) * amp * 0.6 + Math.sin(u * 3.1 + k2) * amp * 0.28 * TB;
+          if (i) { c.lineTo(i, y); } else { c.moveTo(i, y); }
+        }
+        c.stroke();
+        ng();
+      }
+    } else {
+      var cx2 = W / 2, cy2 = H / 2;
+      var mR = Math.max(W, H) * 0.7;
+      for (i = 0; i < 12; i++) {
+        var zz = ((i / 12) + t * 0.06 * SP * DR) % 1;
+        if (zz < 0) { zz += 1; }
+        var rr = mR * (0.04 + zz * zz);
+        c.strokeStyle = cols[i % 4] + hx(zz * 0.5 * I + 0.05);
+        c.lineWidth = LW + zz;
+        c.beginPath();
+        for (j = 0; j <= 6; j++) {
+          var ta = j * 1.047 + zz * 0.6;
+          var tx = cx2 + Math.cos(ta) * rr;
+          var ty = cy2 + Math.sin(ta) * rr * 0.72;
+          if (j) { c.lineTo(tx, ty); } else { c.moveTo(tx, ty); }
+        }
+        c.stroke();
+      }
+      c.lineWidth = LW;
+    }
+    c.globalCompositeOperation = "source-over";
+    c.globalAlpha = 1;
+  },
+  label: function (k, v) {
+    var u = { density: "%", speed: "%", turb: "%", glow: "%", scale: " px", stroke: " px", blur: " px", drift: "%", count: "" };
+    var val = (k === "stroke" || k === "blur") ? num(v, 0).toFixed(1) : Math.round(num(v, 0));
+    return val + (u[k] || "");
+  },
+  sync: function () {
+    var P = this.P;
+    var rb = $("#runb");
+    if (rb) {
+      rb.innerHTML = ic(P.run ? "pause" : "play");
+      rb.classList.toggle("on", P.run);
+    }
+    $$(".mb").forEach(function (b) { b.classList.toggle("on", b.dataset.m === P.mode); });
+    $$(".pbth").forEach(function (b) { b.classList.toggle("on", !P.useCustom && b.dataset.t === P.theme); });
+    $$("[data-p]").forEach(function (el) {
+      var k = el.dataset.p;
+      var v = P[k];
+      if (el.type === "checkbox") { el.checked = !!v; }
+      else if (el !== D.activeElement) { el.value = v; }
+      var o = $("[data-pv='" + k + "']");
+      if (o) { o.textContent = WP.label(k, v); }
+    });
+    $$("[data-c]").forEach(function (el) {
+      if (el !== D.activeElement) { el.value = (P.custom || {})[el.dataset.c] || "#000000"; }
+    });
+    var h = $("#hud");
+    if (h) {
+      h.innerHTML = "<span>" + P.mode.toUpperCase() + "</span><span>" + esc(this.pal().n) + "</span><span>" + (P.run ? "LIVE" : "PAUSE") + "</span>";
+    }
   }
-  function route() { var h = (location.hash || "#/bord").replace("#/", ""); var ok = isTier() ? ["bord", "explorer", "tech", "entretien", "studio", "diagnostic"] : ["bord", "explorer", "tech", "entretien", "studio", "admin", "diagnostic"]; S.view = ok.indexOf(h) > -1 ? h : "bord"; render(); }
-  function boot() { var o = $("#boot"); var done = function () { if (o) o.className = "off"; }; setTimeout(done, 700); var lg = $("#bl"), bb = $("#bbar"); if (lg) lg.innerHTML = "<div><b>OK</b> base chargée · portail prêt</div>"; if (bb) bb.style.width = "100%"; }
-  function init() {
-    purgeCache(false);
-    if (!window.MD_RAW) { logErr("init", new Error("MD_RAW absent")); window.__MD_READY = false; if (window.__MD_FAIL) window.__MD_FAIL(); return; }
-    RAW = window.MD_RAW;
-    SEED = safe("build", function () { return build(RAW); }, { brands: [], models: [], engines: [], faults: [], tsb: [] });
-    safe("norm", function () { normalize(SEED); }, null);
-    DB = clone(SEED);
-    safe("reg", regLoad, null);
-    safe("autoload", function () { AUTO.load(); }, null);
-    safe("recompute", recompute, null);
-    safe("ch", function () { if (window.BroadcastChannel) { CH = new BroadcastChannel("mecadata_v15"); CH.onmessage = function (ev) { var m = ev.data || {}; if (m.t === "reg") { regLoad(); if (isTier()) tierSync(); else if (isAdmin()) { updateMeta(); if (S.view === "admin") render(); } } if (m.t === "pub" && isTier()) tierSync(); }; } }, null);
-    safe("wp", function () { WP.init(); }, null);
-    safe("bind", bind, null);
-    safe("meta", updateMeta, null);
-    safe("boot", boot, null);
-    safe("gate", function () { gateShow(null); }, null);
-    window.__MD_READY = true; window.__MD_SCRIPTS.app = true;
-    var jf = $("#jsfail"); if (jf && jf.parentNode) jf.parentNode.removeChild(jf);
-    var fb = $("#fallback"); if (fb && fb.parentNode) fb.parentNode.removeChild(fb);
-    idle(function () { safe("tests", runTests, null); }, 900);
-    setTimeout(function () { toast("ok", "Cache purgé à l'ouverture", purgeLabel()); }, 1800);
+};
+
+/* ---------- état ---------- */
+var SEED = null;
+var DB = { brands: [], models: [], engines: [], faults: [], tsb: [] };
+var AUDIT = [];
+var UNDO = null;
+var TESTS = [];
+var IVIC = {}, FC = {}, TC = {}, MIDX = {}, BIDX = {}, EIDX = {};
+var IMPORT = null;
+var FIXES = 0;
+var LASTSAVE = 0;
+var DIRTY = false;
+var META = { counts: { b: 0, m: 0, e: 0, f: 0, t: 0, rc: 0, fam: 0, dom: 0 }, links: 0, corr: 0, integ: { err: [], ok: true, pct: 100 }, size: 0, byBrand: {}, regions: {}, cover: 0, perModel: {} };
+var MODE = null;
+var TIER = null;
+var TIER_TS = 0;
+var REG = { users: [], live: false, rev: 0, log: [], tierOpen: true, tierKick: 0 };
+var CH = null;
+var GATE = null;
+var S = {
+  view: "bord",
+  sel: { b: "", m: "", e: "" },
+  f: { q: "", fuel: [], region: "", sort: "brand" },
+  shown: 48,
+  tech: { tab: "faults", q: "", sev: "", brand: "", model: "", phase: "", dom: "", km: "", region: "" },
+  adm: { tab: "files", mega: "" },
+  calc: { km: 60000, year: 2021, sev: 1 },
+  omni: { q: "", hits: [], idx: -1 },
+  tf: ""
+};
+window.MD_STATE = S;
+function isAdmin() { return MODE === "admin"; }
+function isTier() { return MODE === "tier"; }
+
+/* ---------- registre accès ---------- */
+function regLoad() {
+  var r = safe("reg", function () { return JSON.parse(STORE.get(AKEY)); }, null);
+  if (!r || !Array.isArray(r.users)) { r = { users: [], live: false, rev: 0, log: [] }; }
+  if (!Array.isArray(r.log)) { r.log = []; }
+  if (r.tierOpen === undefined) { r.tierOpen = true; }
+  REG = r;
+  return r;
+}
+function regSave() {
+  STORE.set(AKEY, JSON.stringify(REG));
+  bcast({ t: "reg" });
+}
+function bcast(m) {
+  try { if (CH) { CH.postMessage(m); } } catch (e) {}
+}
+function regLog(a) {
+  REG.log.unshift({ ts: Date.now(), a: a });
+  if (REG.log.length > 80) { REG.log.pop(); }
+}
+function tierSession() {
+  if (!TIER) { return null; }
+  var u = null;
+  arr(REG.users).forEach(function (x) { if (x && x.id === TIER) { u = x; } });
+  return u;
+}
+function applyTier() {
+  var raw = STORE.get(PKEY);
+  if (!raw) { return false; }
+  return safe("pub", function () {
+    var d = JSON.parse(raw);
+    if (d && d.db && arr(d.db.engines).length) {
+      DB = d.db;
+      invalidate();
+      normalize(DB);
+      recompute();
+      return true;
+    }
+    return false;
+  }, false);
+}
+function invalidate() { FC = {}; TC = {}; IVIC = {}; }
+
+/* ---------- construction base ---------- */
+function mkEng(n, mid, code, fam, label, fuel, disp, hp, nm, y0, y1, gb) {
+  fuel = nfuel(fuel);
+  var a = num(y0, 2017), b = num(y1, 2027);
+  if (a > b) { var t = a; a = b; b = t; }
+  hp = clamp(num(hp, 100), 1, 3000);
+  return {
+    id: "E" + String(n).padStart(4, "0"),
+    m: [mid], code: str(code, "GEN"), fam: str(fam, str(code, "GEN")),
+    label: str(label, "Motorisation"), fuel: fuel, disp: num(disp, 0),
+    hp: hp, nm: num(nm, 200), kw: Math.round(hp * 0.7355), y: [a, b],
+    gb: str(gb, "BVM"),
+    norm: fuel === "b" ? "ZE" : (a >= 2024 ? "Euro 6e" : "Euro 6"),
+    cyl: fuel === "b" ? "ÉLEC" : (num(disp, 0) > 3400 ? "V8+" : (num(disp, 0) < 1100 ? "L3" : "L4")),
+    asp: fuel === "b" ? "—" : "Turbo",
+    inj: fuel === "b" ? "—" : (fuel === "d" ? "Common Rail" : "Injection directe")
+  };
+}
+function build(R) {
+  var O = { brands: [], models: [], engines: [], faults: [], tsb: [] };
+  arr(R.br).forEach(function (b) {
+    if (!b || !b[0]) { return; }
+    O.brands.push({ id: str(b[0]), n: str(b[1], b[0]), pays: str(b[2], "—"), grp: str(b[3], "—"), region: str(b[4], regionOf(b[2])) });
+  });
+  var md = R.md || {};
+  var me = R.me || {};
+  Object.keys(md).forEach(function (bid) {
+    arr(md[bid]).forEach(function (m) {
+      if (!m || !m[0]) { return; }
+      var y = pair([m[1], m[2]], [2017, 2027]);
+      O.models.push({
+        id: bid + "-" + slug(m[0]), b: bid, n: str(m[0]),
+        y: y[0] > y[1] ? [y[1], y[0]] : y,
+        seg: str(SEGS[clamp(num(m[3], 2), 0, 13)], "Compacte"),
+        phase: clamp(num(m[4], 1), 1, 12)
+      });
+    });
+  });
+  var n = 0;
+  O.models.forEach(function (m) {
+    arr(me[m.id]).forEach(function (e) {
+      if (!e) { return; }
+      n++;
+      O.engines.push(mkEng(n, m.id, e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[8], e[9], e[7]));
+    });
+  });
+  arr(R.ft).forEach(function (f, i) {
+    f = arr(f);
+    if (!f.length || !f[0]) { return; }
+    O.faults.push({
+      id: "F" + String(i + 1).padStart(3, "0"),
+      t: str(f[0]), fam: list(f[1]), mt: list(f[2]), ph: list(f[3]),
+      sev: nsev(f[4]), freq: nfreq(f[5]), y: yOf([f[6], f[7]]), km: kmOf([f[8], f[9]]),
+      sym: list(f[10]), cause: str(f[11], "Cause à expertiser"), fix: str(f[12], "Diagnostic valise requis"),
+      cost: costOf([f[13], f[14]]), status: str(f[15], "Surveillance"), dom: str(f[16], "Moteur")
+    });
+  });
+  arr(R.ts).forEach(function (t, i) {
+    t = arr(t);
+    if (!t.length || !t[0]) { return; }
+    var d = str(t[6], "2026-01");
+    if (!/^\d{4}-\d{2}$/.test(d)) { d = "2026-01"; }
+    O.tsb.push({
+      id: "T" + String(i + 1).padStart(3, "0"),
+      ref: str(t[0]), b: list(t[1]), fam: list(t[2]), mt: list(t[3]), ph: list(t[4]),
+      t: str(t[5], "Bulletin"), date: d, cat: str(t[7], "Moteur"), sev: nsev(t[8]),
+      sum: str(t[9], "Bulletin constructeur."), act: str(t[10], "Appliquer la procédure constructeur."),
+      dom: str(t[11], str(t[7], "Moteur"))
+    });
+  });
+  return O;
+}
+function normalize(d) {
+  var fx = 0;
+  if (!d || typeof d !== "object") { return 1; }
+  FILES.forEach(function (f) {
+    if (!Array.isArray(d[f[0]])) { d[f[0]] = []; fx++; }
+  });
+  var bs = {}, ms = {}, seen = {};
+  d.brands = arr(d.brands).filter(function (b) {
+    if (!b || !b.id || seen["b" + b.id]) { fx++; return false; }
+    seen["b" + b.id] = 1; bs[b.id] = 1;
+    b.n = str(b.n, b.id);
+    if (!REGIONS[b.region]) { b.region = regionOf(b.pays); fx++; }
+    return true;
+  });
+  d.models = arr(d.models).filter(function (m) {
+    if (!m || !m.id || !bs[m.b] || seen["m" + m.id]) { fx++; return false; }
+    seen["m" + m.id] = 1; ms[m.id] = 1;
+    m.n = str(m.n, "Modèle"); m.y = yOf(m);
+    m.phase = clamp(num(m.phase, 1), 1, 12);
+    m.seg = str(m.seg, "Compacte");
+    return true;
+  });
+  d.engines = arr(d.engines).filter(function (e) {
+    if (!e || !e.id) { fx++; return false; }
+    e.m = list(e.m).filter(function (x) { return ms[x]; });
+    if (!e.m.length) { fx++; return false; }
+    if (seen["e" + e.id]) { e.id = uid("E"); fx++; }
+    seen["e" + e.id] = 1;
+    e.code = str(e.code, "GEN"); e.fam = str(e.fam, e.code); e.label = str(e.label, "Motorisation");
+    e.fuel = nfuel(e.fuel);
+    e.hp = clamp(num(e.hp, 100), 1, 3000);
+    e.nm = num(e.nm, 200);
+    e.kw = Math.round(e.hp * 0.7355);
+    e.y = yOf(e);
+    e.gb = str(e.gb, "BVM");
+    return true;
+  });
+  d.faults = arr(d.faults).filter(function (f) {
+    if (!f || !f.id) { fx++; return false; }
+    if (seen["f" + f.id]) { f.id = uid("F"); fx++; }
+    seen["f" + f.id] = 1;
+    f.t = str(f.t, "Fiche"); f.sev = nsev(f.sev); f.freq = nfreq(f.freq);
+    f.fam = list(f.fam); f.mt = list(f.mt); f.ph = list(f.ph); f.sym = list(f.sym);
+    if (!f.sym.length) { f.sym = ["Symptôme à confirmer"]; }
+    f.y = yOf(f); f.km = kmOf(f); f.cost = costOf(f);
+    f.cause = str(f.cause, "—"); f.fix = str(f.fix, "—");
+    f.dom = str(f.dom, "Moteur"); f.status = str(f.status, "Surveillance");
+    return true;
+  });
+  d.tsb = arr(d.tsb).filter(function (t) {
+    if (!t || !t.id) { fx++; return false; }
+    if (seen["t" + t.id]) { t.id = uid("T"); fx++; }
+    seen["t" + t.id] = 1;
+    t.ref = str(t.ref, t.id); t.t = str(t.t, "Bulletin"); t.sev = nsev(t.sev);
+    t.b = list(t.b).filter(function (x) { return bs[x]; });
+    t.fam = list(t.fam); t.mt = list(t.mt); t.ph = list(t.ph);
+    t.date = str(t.date, "2026-01");
+    if (!/^\d{4}-\d{2}$/.test(t.date)) { t.date = "2026-01"; }
+    t.cat = str(t.cat, "Moteur"); t.dom = str(t.dom, t.cat);
+    t.sum = str(t.sum, "—"); t.act = str(t.act, "—");
+    return true;
+  });
+  return fx;
+}
+function reindex() {
+  MIDX = {}; BIDX = {}; EIDX = {};
+  arr(DB.models).forEach(function (m) { MIDX[m.id] = m; });
+  arr(DB.brands).forEach(function (b) { BIDX[b.id] = b; });
+  arr(DB.engines).forEach(function (e) { EIDX[e.id] = e; });
+}
+function brandOf(e) {
+  var m = e && MIDX[arr(e.m)[0]];
+  return m ? (BIDX[m.b] || null) : null;
+}
+function modelOf(e) { return (e && MIDX[arr(e.m)[0]]) || null; }
+function engName(e) {
+  var m = modelOf(e), b = brandOf(e);
+  return ((b ? b.n + " " : "") + (m ? m.n + " — " : "") + str(e && e.label)).trim();
+}
+function tokHit(l, name) {
+  var a = arr(l);
+  if (!a.length) { return false; }
+  var n = nk(name);
+  for (var i = 0; i < a.length; i++) {
+    var t = nk(a[i]);
+    if (t === "*" || (t && n.indexOf(t) > -1)) { return true; }
   }
-  safe("init", init, null);
-  if (!window.__MD_READY) { if (window.__MD_LIFT) window.__MD_LIFT(); var g = $("#gate"); if (g) g.className = "off"; }
-})();
+  return false;
+}
+function phaseOk(ph, m) {
+  var a = arr(ph);
+  if (!a.length || a.indexOf("*") > -1) { return true; }
+  return a.indexOf(String(m && m.phase)) > -1;
+}
+function fApply(f, e, m) {
+  if (!f || !e || !m) { return false; }
+  if (!(arr(f.fam).indexOf(e.fam) > -1 || tokHit(f.mt, m.n))) { return false; }
+  return phaseOk(f.ph, m);
+}
+function tApply(t, e, m) {
+  if (!t || !e || !m) { return false; }
+  if (!(arr(t.fam).indexOf(e.fam) > -1 || tokHit(t.mt, m.n) || arr(t.b).indexOf(m.b) > -1)) { return false; }
+  return phaseOk(t.ph, m);
+}
+function faultsFor(e) {
+  if (!e || !e.id) { return []; }
+  if (FC[e.id]) { return FC[e.id]; }
+  var m = modelOf(e);
+  var out = [];
+  if (m) {
+    out = arr(DB.faults).filter(function (f) { return fApply(f, e, m); }).map(function (f) {
+      var g = clone(f);
+      g.active = ov(g.y, yOf(e)) && ov(g.y, yOf(m));
+      return g;
+    }).sort(function (a, b) {
+      var d = (b.active ? 1 : 0) - (a.active ? 1 : 0);
+      return d || (SV[b.sev].w - SV[a.sev].w);
+    });
+  }
+  FC[e.id] = out;
+  return out;
+}
+function tsbFor(e) {
+  if (!e || !e.id) { return []; }
+  if (TC[e.id]) { return TC[e.id]; }
+  var m = modelOf(e);
+  var out = [];
+  if (m) {
+    out = arr(DB.tsb).filter(function (t) { return tApply(t, e, m); }).sort(function (a, b) {
+      return String(b.date).localeCompare(String(a.date));
+    });
+  }
+  TC[e.id] = out;
+  return out;
+}
+function isRecall(t) { return !!t && (t.cat === "Rappel" || /^RPL-/.test(String(t.ref))); }
+function ivi(e) {
+  if (!e || !e.id) { return 0; }
+  if (IVIC[e.id] !== undefined) { return IVIC[e.id]; }
+  var s = 0;
+  faultsFor(e).forEach(function (f) {
+    s += (SV[f.sev].w * (FQ[f.freq] || 1)) * (f.active ? 1 : 0.25);
+  });
+  s = clamp(Math.round(s), 0, 100);
+  IVIC[e.id] = s;
+  return s;
+}
+function engForFault(f) {
+  return arr(DB.engines).filter(function (e) { return fApply(f, e, modelOf(e)); });
+}
+function engForTsb(t) {
+  return arr(DB.engines).filter(function (e) { return tApply(t, e, modelOf(e)); });
+}
+function integrity() {
+  var err = [], mi = {}, bi = {}, du = 0;
+  arr(DB.models).forEach(function (m) { mi[m.id] = 1; });
+  arr(DB.brands).forEach(function (b) { bi[b.id] = 1; });
+  FILES.forEach(function (f) {
+    var s = {};
+    arr(DB[f[0]]).forEach(function (x) {
+      if (!x) { return; }
+      if (s[x.id]) { du++; }
+      s[x.id] = 1;
+    });
+  });
+  if (du) { err.push(du + " doublon(s)"); }
+  arr(DB.models).forEach(function (m) { if (!bi[m.b]) { err.push("marque inconnue " + m.b); } });
+  arr(DB.engines).forEach(function (e) {
+    arr(e.m).forEach(function (i) { if (!mi[i]) { err.push("orphelin " + e.id); } });
+  });
+  return { err: err, ok: !err.length, pct: err.length ? Math.max(0, 100 - err.length * 7) : 100 };
+}
+function recompute() {
+  invalidate();
+  reindex();
+  var links = 0, corr = 0, bb = {}, doms = {}, fams = {}, regs = {}, pm = {};
+  arr(DB.engines).forEach(function (e) {
+    var m = MIDX[arr(e.m)[0]];
+    fams[e.fam] = 1;
+    links += arr(e.m).length;
+    if (m) {
+      bb[m.b] = (bb[m.b] || 0) + 1;
+      pm[m.id] = (pm[m.id] || 0) + 1;
+    }
+    corr += faultsFor(e).length + tsbFor(e).length;
+  });
+  arr(DB.brands).forEach(function (b) { regs[b.region] = (regs[b.region] || 0) + 1; });
+  arr(DB.faults).forEach(function (f) { links += arr(f.fam).length; doms[f.dom] = 1; });
+  arr(DB.tsb).forEach(function (t) { links += arr(t.b).length + arr(t.fam).length; doms[t.dom] = 1; });
+  var w = 0, tot = arr(DB.models).length;
+  Object.keys(pm).forEach(function (k) { if (pm[k] >= 2) { w++; } });
+  META = {
+    counts: { b: arr(DB.brands).length, m: tot, e: arr(DB.engines).length, f: arr(DB.faults).length, t: arr(DB.tsb).length, rc: arr(DB.tsb).filter(isRecall).length, fam: Object.keys(fams).length, dom: Object.keys(doms).length },
+    links: links, corr: corr, integ: integrity(),
+    size: Math.round(JSON.stringify(DB).length / 1024),
+    byBrand: bb, regions: regs,
+    cover: tot ? Math.round(w / tot * 100) : 0,
+    perModel: pm
+  };
+}
+
+/* ---------- plans entretien ---------- */
+function svcList() {
+  var l = arr(RAW.svc).filter(function (s) { return s && num(s.base, 0) > 0 && arr(s.items).length; });
+  return l.length ? l : [SVC_FB];
+}
+function svcFor(e) {
+  var l = svcList();
+  var fam = str(e && e.fam);
+  var fuel = str(e && e.fuel, "e");
+  var i, j;
+  for (i = 0; i < l.length; i++) {
+    var fs = arr(l[i].fams);
+    if (fs.indexOf("*") > -1) { continue; }
+    for (j = 0; j < fs.length; j++) {
+      if (fs[j] === fam) { return l[i]; }
+    }
+  }
+  for (i = 0; i < l.length; i++) {
+    if (arr(l[i].fams).indexOf("*") > -1 && l[i].fuel === fuel) { return l[i]; }
+  }
+  for (i = 0; i < l.length; i++) {
+    if (arr(l[i].fams).indexOf("*") > -1) { return l[i]; }
+  }
+  return SVC_FB;
+}
+function buildPlan(e, m, b) {
+  var s = svcFor(e);
+  var base = clamp(num(s.base, 20000), 5000, 40000);
+  var months = clamp(num(s.months, 12), 6, 48);
+  var items = arr(s.items).filter(function (x) { return Array.isArray(x) && x[0]; });
+  if (!items.length) { items = SVC_FB.items; }
+  var ctrl = arr(s.controls).filter(Boolean);
+  if (!ctrl.length) { ctrl = SVC_FB.controls; }
+  var dist = arr(s.dist).length >= 3 ? s.dist : SVC_FB.dist;
+  var annual = Math.max(8000, Math.round(base * 12 / months));
+  var visits = [];
+  var km, i;
+  for (km = base; km <= KMMAX; km += base) {
+    var ops = [];
+    for (i = 0; i < items.length; i++) {
+      var ik = num(items[i][1], 0);
+      var im = num(items[i][2], 0);
+      if (ik > 0) {
+        if (km % ik === 0) { ops.push(str(items[i][0])); }
+      } else if (im > 0) {
+        var st2 = Math.max(base, Math.round(annual * im / 12 / base) * base);
+        if (st2 > 0 && km % st2 === 0) { ops.push(str(items[i][0]) + " (" + im + " mois)"); }
+      }
+    }
+    var dk = num(dist[1], 0);
+    if (dk > 0 && km >= dk && km - dk < base) {
+      ops.push(str(dist[0]) + " — REMPLACEMENT " + fmt(dk) + " km");
+    }
+    if (!ops.length) { ops.push("Révision intermédiaire constructeur"); }
+    visits.push({ km: km, mo: Math.round(km / annual * 12), ops: ops, ctrl: ctrl.slice() });
+  }
+  if (num(dist[1], 0) > KMMAX) {
+    visits.push({ km: num(dist[1], 0), mo: num(dist[2], 0), ops: [str(dist[0]) + " — REMPLACEMENT"], ctrl: ["Contrôle tension"] });
+  }
+  if (!visits.length) {
+    visits.push({ km: KMMAX, mo: 120, ops: ["Révision générale 200 000 km"], ctrl: ctrl.slice() });
+  }
+  visits.sort(function (a, b2) { return num(a.km, 0) - num(b2.km, 0); });
+  return { svc: s, visits: visits, base: base, months: months, brand: b || null, model: m || null, engine: e || null };
+}
+function lastKm(pl) {
+  var v = arr(pl && pl.visits);
+  var l = v[v.length - 1];
+  return l ? num(l.km, 0) : 0;
+}
+
+/* ---------- sauvegarde locale admin + backup ---------- */
+function saveNow(quiet) {
+  if (!isAdmin()) { return false; }
+  return safe("save", function () {
+    STORE.set(KEY, JSON.stringify({ v: 17, db: DB, audit: AUDIT.slice(-60), prefs: PREF, wp: WP.P, ts: Date.now() }));
+    LASTSAVE = Date.now();
+    DIRTY = false;
+    updStor();
+    updateMeta();
+    if (!quiet) { toast("ok", "Sauvegarde locale effectuée", fmt(META.counts.e) + " motorisations · " + META.size + " Ko"); }
+    return true;
+  }, false);
+}
+var save = deb(function () { saveNow(true); }, 350);
+function markDirty() {
+  if (isAdmin()) { DIRTY = true; save(); }
+}
+function backupExport() {
+  if (!isAdmin()) { toast("err", "Réservé admin"); return; }
+  download("mecadata_sauvegarde_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ kind: "mecadata-backup", v: 17, ts: Date.now(), db: DB, prefs: PREF, wp: WP.P, auto: AUTO.st, audit: AUDIT.slice(-60) }, null, 2));
+  toast("ok", "Backup exporté", "Fichier JSON de sauvegarde locale.");
+  beep("ok");
+}
+function backupRestore(obj) {
+  if (!isAdmin()) { toast("err", "Réservé admin"); return; }
+  if (!obj || !obj.db || !arr(obj.db.engines).length) { toast("err", "Backup invalide"); return; }
+  snapshot("restore");
+  DB = obj.db;
+  FIXES += normalize(DB);
+  recompute();
+  if (obj.prefs) { Object.keys(obj.prefs).forEach(function (k) { PREF[k] = obj.prefs[k]; }); }
+  if (obj.wp) { Object.keys(obj.wp).forEach(function (k) { WP.P[k] = obj.wp[k]; }); }
+  saveNow(true);
+  audit("bak", "Restauration backup");
+  updateMeta();
+  render();
+  toast("ok", "Backup restauré", fmt(META.counts.e) + " motorisations rechargées.");
+  beep("imp");
+}
+function audit(t, m) {
+  AUDIT.push({ ts: Date.now(), type: t, msg: m });
+  if (AUDIT.length > 150) { AUDIT = AUDIT.slice(-150); }
+}
+function snapshot(l) { UNDO = { label: l, db: clone(DB) }; }
+function doUndo() {
+  if (!UNDO) { return; }
+  DB = UNDO.db;
+  UNDO = null;
+  invalidate();
+  recompute();
+  markDirty();
+  updateMeta();
+  render();
+  toast("ok", "Action annulée");
+}
+function publish(auto) {
+  if (!isAdmin()) { return; }
+  REG.rev = num(REG.rev, 0) + 1;
+  STORE.set(PKEY, JSON.stringify({ ts: Date.now(), rev: REG.rev, db: DB }));
+  regLog("Diffusion rév " + REG.rev);
+  regSave();
+  bcast({ t: "pub" });
+  if (!auto) { toast("ok", "Diffusé aux tiers", "Révision " + REG.rev); }
+}
+function mutate(t, m) {
+  FIXES += normalize(DB);
+  recompute();
+  audit(t, m);
+  markDirty();
+  if (REG.live && isAdmin()) { publish(true); }
+  updateMeta();
+  render();
+}
+
+/* ---------- recherche auto massive ---------- */
+var AUTO = {
+  st: { last: 0, lastFull: 0, onLaunch: true, runs: 0, added: { m: 0, e: 0, f: 0, t: 0 }, log: [] },
+  SEEDS: [
+    ["renault", "Clio VI", 6, 2026, 2027, 0], ["peugeot", "208 III", 3, 2026, 2027, 0],
+    ["vw", "ID.2", 1, 2025, 2027, 0], ["bmw", "iX3 Neue Klasse", 1, 2025, 2027, 4],
+    ["mercedes", "CLA III", 1, 2025, 2027, 5], ["toyota", "C-HR III", 3, 2026, 2027, 3],
+    ["hyundai", "Ioniq 3", 1, 2026, 2027, 2], ["kia", "EV2", 1, 2025, 2027, 3],
+    ["byd", "Seal 06 DM-i", 1, 2025, 2027, 5], ["mg", "MGS6 EV", 1, 2026, 2027, 4],
+    ["xiaomi", "YU7 Ultra", 2, 2026, 2027, 4], ["tesla", "Model 2", 1, 2026, 2027, 0]
+  ],
+  RISK: [
+    ["courroie humide bain huile", "Distribution", "critique"],
+    ["chaîne distribution allongée", "Distribution", "critique"],
+    ["batterie HV cellules LG", "Batterie HV", "critique"],
+    ["ICCU chargeur 800V", "Charge", "majeure"],
+    ["refroidisseur EGR fuite glycol", "Refroidissement", "critique"],
+    ["pompe AdBlue SCR cristallisation", "Antipollution", "majeure"],
+    ["FAP colmatage urbain", "Antipollution", "majeure"],
+    ["dilution huile trajets courts", "Moteur", "majeure"]
+  ],
+  load: function () {
+    var r = safe("auto", function () { return JSON.parse(STORE.get(AKEY2)); }, null);
+    if (r && r.added) { this.st = r; }
+    if (!this.st.added) { this.st.added = { m: 0, e: 0, f: 0, t: 0 }; }
+    if (!Array.isArray(this.st.log)) { this.st.log = []; }
+    return this.st;
+  },
+  saveSt: function () { STORE.set(AKEY2, JSON.stringify(this.st)); },
+  log: function (m) {
+    this.st.log.unshift({ ts: Date.now(), m: m });
+    if (this.st.log.length > 60) { this.st.log.pop(); }
+  },
+  hasModel: function (b, n) {
+    return arr(DB.models).some(function (m) { return m.b === b && nk(m.n) === nk(n); });
+  },
+  addModel: function (b, n, phase, y0, y1, seg) {
+    if (!BIDX[b] || this.hasModel(b, n)) { return null; }
+    var m = { id: b + "-" + slug(n), b: b, n: n, y: [y0, y1], seg: str(SEGS[seg], "Compacte"), phase: phase };
+    DB.models.push(m);
+    this.st.added.m++;
+    return m;
+  },
+  addEngine: function (mid, src, hp, nm) {
+    if (!MIDX[mid] || !src) { return null; }
+    var dup = arr(DB.engines).some(function (e) {
+      return arr(e.m).indexOf(mid) > -1 && e.fam === src.fam && e.hp === hp;
+    });
+    if (dup) { return null; }
+    var e2 = mkEng(arr(DB.engines).length + 1, mid, src.code, src.fam, src.label.replace(/\s\d+$/, "") + " " + hp, src.fuel, src.disp, hp, nm, src.y[0], src.y[1], src.gb);
+    DB.engines.push(e2);
+    this.st.added.e++;
+    return e2;
+  },
+  addFault: function (t, fams, mts, sev, dom, cause, fix) {
+    var dup = arr(DB.faults).some(function (f) { return nk(f.t) === nk(t); });
+    if (dup) { return null; }
+    var f = { id: uid("F"), t: t, fam: fams, mt: mts, ph: ["*"], sev: sev, freq: "moyenne", y: [2017, YMAX], km: [20000, 200000], sym: ["Voyant moteur", "Comportement anormal"], cause: cause, fix: fix, cost: [0, 0], status: "Veille automatique", dom: dom };
+    DB.faults.push(f);
+    this.st.added.f++;
+    return f;
+  },
+  addTsb: function (ref, bs, mts, title, cat, sev, sum, act) {
+    var dup = arr(DB.tsb).some(function (t) { return nk(t.ref) === nk(ref); });
+    if (dup) { return null; }
+    var d = new Date();
+    var t = { id: uid("T"), ref: ref, b: bs, fam: [], mt: mts, ph: ["*"], t: title, date: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"), cat: cat, sev: sev, sum: sum, act: act, dom: cat };
+    DB.tsb.push(t);
+    this.st.added.t++;
+    return t;
+  },
+  powers: function (cap) {
+    var add = 0;
+    var lad = { e: [15, 25, 40], d: [20, 30], h: [15, 25], p: [20], b: [30, 60], g: [10] };
+    var byModel = {};
+    arr(DB.engines).forEach(function (e) {
+      var mid = arr(e.m)[0];
+      if (!byModel[mid]) { byModel[mid] = []; }
+      byModel[mid].push(e);
+    });
+    Object.keys(byModel).forEach(function (mid) {
+      if (cap && add >= cap) { return; }
+      var byFam = {};
+      byModel[mid].forEach(function (e) {
+        if (!byFam[e.fam]) { byFam[e.fam] = []; }
+        byFam[e.fam].push(e);
+      });
+      Object.keys(byFam).forEach(function (fam) {
+        if (cap && add >= cap) { return; }
+        var g = byFam[fam].sort(function (a, b) { return a.hp - b.hp; });
+        if (g.length < 2) {
+          var src = g[0];
+          var st = (lad[src.fuel] || [20])[0];
+          if (AUTO.addEngine(mid, src, Math.round(src.hp * (1 + st / 100)), Math.round(src.nm * (1 + st / 160)))) { add++; }
+        } else {
+          var lo = g[0], hi = g[g.length - 1];
+          if (hi.hp - lo.hp < 40) {
+            var mid2 = Math.round((lo.hp + hi.hp) / 2 / 5) * 5;
+            if (mid2 > lo.hp && mid2 < hi.hp) {
+              if (AUTO.addEngine(mid, lo, mid2, Math.round((lo.nm + hi.nm) / 2))) { add++; }
+            }
+          }
+        }
+      });
+    });
+    return add;
+  },
+  models: function (cap) {
+    var add = 0;
+    AUTO.SEEDS.forEach(function (s) {
+      if (cap && add >= cap) { return; }
+      if (!BIDX[s[0]]) { return; }
+      var m = AUTO.addModel(s[0], s[1], s[2], s[3], s[4], s[5]);
+      if (m) {
+        add++;
+        var src = arr(DB.engines).filter(function (e) {
+          var mm = modelOf(e);
+          return mm && mm.b === s[0];
+        })[0];
+        if (src) { AUTO.addEngine(m.id, src, src.hp, src.nm); }
+      }
+    });
+    arr(DB.models).slice().forEach(function (m) {
+      if (cap && add >= cap) { return; }
+      if (m.y[1] >= 2024 && m.phase < 6 && m.n.indexOf("Phase 2") < 0) {
+        var nm2 = m.n + " Phase 2";
+        if (!AUTO.hasModel(m.b, nm2)) {
+          var y0 = Math.min(YMAX - 1, Math.max(2024, m.y[1] - 1));
+          var m2 = AUTO.addModel(m.b, nm2, m.phase + 1, y0, YMAX, SEGS.indexOf(m.seg));
+          if (m2) {
+            add++;
+            arr(DB.engines).filter(function (e) { return arr(e.m).indexOf(m.id) > -1; }).slice(0, 3).forEach(function (e) {
+              AUTO.addEngine(m2.id, e, e.hp, e.nm);
+            });
+          }
+        }
+      }
+    });
+    return add;
+  },
+  faults: function (cap) {
+    var add = 0, has = {};
+    arr(DB.faults).forEach(function (f) {
+      arr(f.fam).forEach(function (x) { has[x] = 1; });
+    });
+    var fams = {};
+    arr(DB.engines).forEach(function (e) { fams[e.fam] = (fams[e.fam] || 0) + 1; });
+    Object.keys(fams).forEach(function (fam, idx) {
+      if (cap && add >= cap) { return; }
+      if (has[fam] || fams[fam] < 3) { return; }
+      var risk = AUTO.RISK[idx % AUTO.RISK.length];
+      var mts = [];
+      arr(DB.engines).forEach(function (e) {
+        if (e.fam === fam) {
+          arr(e.m).forEach(function (mid) {
+            var m = MIDX[mid];
+            if (m && mts.indexOf(m.n) < 0 && mts.length < 6) { mts.push(m.n); }
+          });
+        }
+      });
+      if (AUTO.addFault("Veille auto — " + risk[0] + " (" + fam + ")", [fam], mts, risk[2], risk[1], "Risque documenté sur architecture comparable, surveillance déclenchée par le balayage automatique.", "Contrôle préventif à chaque révision, diagnostic valise et application du bulletin constructeur dès publication.")) { add++; }
+    });
+    return add;
+  },
+  tsb: function (cap) {
+    var add = 0, has = {};
+    arr(DB.tsb).forEach(function (t) {
+      arr(t.b).forEach(function (b) { has[b] = 1; });
+    });
+    arr(DB.brands).forEach(function (b) {
+      if (cap && add >= cap) { return; }
+      if (has[b.id]) { return; }
+      var ms = arr(DB.models).filter(function (m) { return m.b === b.id; }).slice(0, 5).map(function (m) { return m.n; });
+      if (AUTO.addTsb("AUTO-" + b.id.toUpperCase() + "-12V", [b.id], ms, "Veille auto " + b.n + " — batterie 12V et gestion veille", "Batterie 12V", "modérée", "Balayage automatique : veille télématique et batterie 12V AGM/EFB à contrôler sur gamme " + b.n + ".", "Test batterie 12V, contrôle DC-DC, mise à jour gestion veille.")) { add++; }
+      if (cap && add >= cap) { return; }
+      if (AUTO.addTsb("RPL-AUTO-" + b.id.toUpperCase() + "-ADAS", [b.id], ms, "Veille auto " + b.n + " — calibration ADAS après vitrage", "ADAS", "majeure", "Balayage automatique : calibration caméra/radar obligatoire après remplacement de pare-brise sur gamme " + b.n + ".", "Calibration statique et dynamique après intervention vitrage.")) { add++; }
+    });
+    return add;
+  },
+  sweep: function (reason, full) {
+    if (!isAdmin()) { return { ok: false, total: 0 }; }
+    this.load();
+    var cap = full ? 0 : 400;
+    var a1 = this.models(cap);
+    var a2 = this.powers(cap);
+    var a3 = this.faults(cap);
+    var a4 = this.tsb(cap);
+    var total = a1 + a2 + a3 + a4;
+    FIXES += normalize(DB);
+    recompute();
+    this.st.runs++;
+    this.st.last = Date.now();
+    if (full) { this.st.lastFull = Date.now(); }
+    this.log(reason + " : +" + a1 + " modèles, +" + a2 + " mot., +" + a3 + " pannes, +" + a4 + " bulletins");
+    this.saveSt();
+    audit("auto", "Balayage " + reason + " : " + total);
+    markDirty();
+    if (REG.live) { publish(true); }
+    updateMeta();
+    return { ok: true, total: total, m: a1, e: a2, f: a3, t: a4 };
+  },
+  maybe: function () {
+    this.load();
+    var now = Date.now();
+    if (now - num(this.st.lastFull, 0) > 30 * 86400000) {
+      var r = this.sweep("cycle 30 jours", true);
+      if (r.total) { toast("ok", "Mise à jour auto 30 j", r.total + " complément(s)."); }
+      return r;
+    }
+    if (this.st.onLaunch && now - num(this.st.last, 0) > 6 * 3600000) {
+      var r2 = this.sweep("lancement", false);
+      if (r2.total) { toast("info", "Recherche auto massive", r2.total + " complément(s)."); }
+      return r2;
+    }
+    return { ok: true, total: 0 };
+  }
+};
+window.MD_API = {
+  db: function () { return DB; },
+  meta: function () { return META; },
+  isAdmin: isAdmin, isTier: isTier,
+  mutate: mutate, publish: publish,
+  sweep: function (f) { return AUTO.sweep(f ? "manuel complet" : "manuel", !!f); },
+  auto: AUTO, purge: purgeCache, save: saveNow, backup: backupExport, restore: backupRestore
+};
