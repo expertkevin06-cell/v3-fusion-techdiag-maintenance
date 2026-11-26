@@ -65,9 +65,6 @@ svg.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-wid
 .tsb .ref{font:500 10px var(--gm);color:var(--cy)}.tsb.rc .ref{color:var(--or)}.tsb b{display:block;font-size:13px;margin:3px 0 5px}.tsb p{font-size:11.5px;color:var(--t2)}
 .tsb .act{border-left:2px solid var(--cy);padding-left:9px;margin-top:7px;font-size:11.5px}.tsb.rc .act{border-left-color:var(--or)}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.panel{border:1px solid var(--ln);border-radius:13px;padding:14px 16px;background:rgba(22,16,9,.86);position:relative}
-.panel:before{content:"";position:absolute;top:0;left:13px;width:30px;height:2px;background:var(--gb)}
-.panel h3{font:600 13.5px var(--gd);display:flex;gap:7px;align-items:center;margin-bottom:11px}.panel h3 .ic{color:var(--or)}
 .sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px}
 .sp{border:1px solid var(--ln);border-radius:9px;padding:7px 10px;background:rgba(30,21,12,.4)}.sp span{font:400 8.5px var(--gm);letter-spacing:.1em;color:var(--t3);text-transform:uppercase;display:block}.sp b{font:500 12px var(--gm);display:block;margin-top:2px}.sp b.hl{color:var(--or)}
 .btn{display:inline-flex;align-items:center;gap:7px;font:500 12px var(--gd);padding:7px 12px;border-radius:9px;border:1px solid var(--ln);background:var(--s2);white-space:nowrap}
@@ -93,21 +90,33 @@ svg.ic{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-wid
 <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 19a2 2 0 0 0 4 0"/></symbol>
 <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v4h4M9 12h6M9 16h6"/></symbol>
 <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14 6a4 4 0 0 0-5.6 4.9L3 16.3V21h4.7l5.4-5.4A4 4 0 0 0 18 10l-2.8 2.8-2.5-2.5Z"/></symbol>
-<symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 14a8 8 0 1 1 16 0M12 14l4-5M2 19h20"/></symbol>
 <symbol id="i-x" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"/></symbol>
-<symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
-<symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12.5 5.5 5.5L20 6.5"/></symbol>
 </defs></svg>
 <canvas id="plbg" aria-hidden="true"></canvas>
 <header id="pltop">
-<a class="back" href="index.html"><svg class="ic"><use href="#i-back"/></svg>RETOUR TOURISME</a>
+<a class="back" href="index.html" id="plback"><svg class="ic"><use href="#i-back"/></svg>RETOUR TOURISME</a>
 <div class="pllogo"><svg class="ic" style="width:30px;height:30px"><use href="#i-truck"/></svg><span>MECADATA <i>//</i> POIDS LOURDS<small>MÉGA-BASE PL 2017→2027</small></span></div>
 <div class="plsearch"><input id="plq" type="search" placeholder="Recherche massive PL : marque, modèle, moteur, panne, rappel, TSB…" autocomplete="off"></div>
 <span class="plchip">UNIVERS PL SÉPARÉ</span>
 </header>
 <main id="plview"></main>
-<footer id="plstatus"><span>MARQUES <b id="stB">0</b></span><span>MODÈLES <b id="stM">0</b></span><span>MOTORISATIONS <b id="stE">0</b></span><span>PANNES <b id="stF">0</b></span><span>RAPPELS/TSB <b id="stT">0</b></span><span class="plchip" style="border:0;background:none;padding:0">SYNTHÈSE INGÉNIEUR PL — CONFIRMER AU VIN</span></footer>
+<footer id="plstatus"><span>MARQUES <b id="stB">0</b></span><span>MODÈLES <b id="stM">0</b></span><span>MOTORISATIONS <b id="stE">0</b></span><span>PANNES <b id="stF">0</b></span><span>RAPPELS/TSB <b id="stT">0</b></span><span>SYNTHÈSE INGÉNIEUR PL — CONFIRMER AU VIN</span></footer>
 <div id="plmodal"><div class="mo"><div class="mh"><h3 id="pmTitle">Détail</h3><button class="x" id="pmClose" type="button"><svg class="ic"><use href="#i-x"/></svg></button></div><div id="pmBody"></div></div></div>
 <script src="js/pl.js"></script>
+<script>
+/* Retour univers : si ouvert en overlay, on ferme l'overlay du parent
+   (la page tourisme n'est jamais rechargée → session conservée,
+   aucun mot de passe redemandé). Sinon repli lien normal. */
+(function () {
+  var b = document.getElementById("plback");
+  if (!b) return;
+  b.addEventListener("click", function (e) {
+    if (window.parent && window.parent !== window) {
+      e.preventDefault();
+      try { window.parent.postMessage({ md: "uniback" }, "*"); } catch (err) {}
+    }
+  });
+})();
+</script>
 </body>
 </html>
