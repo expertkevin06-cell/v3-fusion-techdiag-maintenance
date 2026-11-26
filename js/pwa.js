@@ -1,8 +1,10 @@
-/* MECADATA v14 — PWA + lanceur d'univers séparés (PL, MOTOS/QUAD).
-   Les univers s'ouvrent dans un overlay iframe : la page tourisme (et sa
-   session déjà authentifiée) reste vivante en arrière-plan. La touche retour
-   de l'univers ferme l'overlay → retour DIRECT au menu tourisme, sans portail
-   ni mot de passe. Si l'overlay est impossible, repli lien classique. */
+/* MECADATA pwa v16 — anti-cache périmé + icônes + installation + univers.
+   • Enregistre sw.js?v=16, appelle reg.update() à chaque ouverture.
+   • Si un SW en attente existe : skipWaiting puis RECHARGEMENT unique
+     (garde-fou sessionStorage) → le nouveau app.js est toujours exécuté.
+   • Génération d'icônes différée (idle) pour ne pas ralentir le lancement.
+   • Injecte les cases PL et MOTOS & QUADS (overlay iframe, retour sans
+     rechargement de la page tourisme). */
 (function () {
   "use strict";
   var D = document;
@@ -10,6 +12,7 @@
   var SIZES = [["favicon-16.png", 16, false], ["favicon-32.png", 32, false], ["apple-touch-icon.png", 180, true], ["icon-192.png", 192, false], ["icon-512.png", 512, false], ["icon-maskable-192.png", 192, true], ["icon-maskable-512.png", 512, true]];
   var isWeb = /^https?:$/.test(location.protocol);
   var GEN = {}, deferred = null, installed = false, swReg = null;
+  function idle(f, ms) { if (window.requestIdleCallback) requestIdleCallback(function () { f(); }, { timeout: ms || 2000 }); else setTimeout(f, ms || 400); }
 
   function draw(c, s, mask) {
     c.clearRect(0, 0, s, s); c.save();
@@ -62,19 +65,41 @@
   function notifyUpdate(reg) {
     var box = D.getElementById("ts"); if (!box || D.getElementById("pwaUpdate")) return;
     var el = D.createElement("div"); el.className = "to info"; el.id = "pwaUpdate";
-    el.innerHTML = "<svg class='ic'><use href='#i-reset'/></svg><div style='flex:1;min-width:0'><b>Mise à jour disponible</b><p>Une nouvelle version est en cache.</p></div><button class='btn xs pri' id='pwaReload'>ACTIVER</button>";
+    el.innerHTML = "<svg class='ic'><use href='#i-reset'/></svg><div style='flex:1;min-width:0'><b>Mise à jour prête</b><p>Activation immédiate du nouveau code.</p></div><button class='btn xs pri' id='pwaReload'>ACTIVER</button>";
     box.appendChild(el);
     var btn = D.getElementById("pwaReload");
-    if (btn) btn.addEventListener("click", function () { try { if (reg.waiting) reg.waiting.postMessage("skipWaiting"); } catch (e) {} setTimeout(function () { location.reload(); }, 220); });
+    if (btn) btn.addEventListener("click", function () { activateWaiting(reg, true); });
+  }
+  function activateWaiting(reg, reload) {
+    try {
+      sessionStorage.setItem("md_sw_reload", reload ? "1" : "0");
+      if (reg.waiting) reg.waiting.postMessage("skipWaiting");
+    } catch (e) {}
   }
   function sw() {
     if (!isWeb || !("serviceWorker" in navigator)) { status(); return; }
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js", { scope: "./" }).then(function (reg) {
+      navigator.serviceWorker.register("sw.js?v=16", { scope: "./" }).then(function (reg) {
         swReg = reg; status();
-        if (reg.waiting) notifyUpdate(reg);
-        reg.addEventListener("updatefound", function () { var nw = reg.installing; if (!nw) return; nw.addEventListener("statechange", function () { if (nw.state === "installed" && navigator.serviceWorker.controller) notifyUpdate(reg); }); });
+        try { reg.update(); } catch (e) {}
+        if (reg.waiting) {
+          var already = false;
+          try { already = sessionStorage.getItem("md_sw_reload") === "1"; } catch (e) {}
+          if (!already) activateWaiting(reg, true); else notifyUpdate(reg);
+        }
+        reg.addEventListener("updatefound", function () {
+          var nw = reg.installing; if (!nw) return;
+          nw.addEventListener("statechange", function () {
+            if (nw.state === "installed" && navigator.serviceWorker.controller) activateWaiting(reg, true);
+          });
+        });
       }).catch(function () { swReg = null; status(); });
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        var once = false;
+        try { once = sessionStorage.getItem("md_sw_reload") === "1"; sessionStorage.removeItem("md_sw_reload"); } catch (e) {}
+        if (once) location.reload();
+        status();
+      });
     });
   }
   function net() { window.addEventListener("online", status); window.addEventListener("offline", status); }
@@ -84,8 +109,6 @@
       if (window.matchMedia) { var mq = window.matchMedia("(display-mode: standalone)"); if (mq.addEventListener) mq.addEventListener("change", function (e) { installed = e.matches; installBtnState(); status(); }); }
     } catch (e) {}
   }
-
-  /* ── Symboles supplémentaires (camion + moto) ── */
   function addSymbol(id, inner) {
     if (D.getElementById(id)) return;
     var defs = D.querySelector("svg[aria-hidden='true'] defs"); if (!defs) return;
@@ -93,41 +116,25 @@
     sym.setAttribute("id", id); sym.setAttribute("viewBox", "0 0 24 24");
     sym.innerHTML = inner; defs.appendChild(sym);
   }
-
-  /* ── Overlay univers (PL / MOTOS) : la page tourisme reste vivante ── */
   var UNI = null;
   function openUniverse(url, title) {
     closeUniverse();
-    UNI = D.createElement("div");
-    UNI.id = "mduni";
+    UNI = D.createElement("div"); UNI.id = "mduni";
     UNI.style.cssText = "position:fixed;inset:0;z-index:400;background:#04070D;";
     var bar = D.createElement("div");
     bar.style.cssText = "position:absolute;top:0;left:0;right:0;height:44px;z-index:2;display:flex;align-items:center;gap:10px;padding:0 10px;background:rgba(4,7,13,.96);border-bottom:1px solid rgba(255,106,0,.4);";
     bar.innerHTML = "<button type='button' id='uniBack' style='display:inline-flex;align-items:center;gap:7px;font:600 11px system-ui;letter-spacing:.06em;color:#120B05;background:linear-gradient(135deg,#FFD9A8,#FF6A00 55%,#C2410C);padding:8px 12px;border:0;border-radius:9px;cursor:pointer'>← RETOUR TOURISME</button><span style='font:500 10px ui-monospace,monospace;color:#FF6A00'>" + title + " · UNIVERS SÉPARÉ</span>";
     var fr = D.createElement("iframe");
-    fr.src = url;
-    fr.title = title;
+    fr.src = url; fr.title = title;
     fr.style.cssText = "position:absolute;top:44px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 44px);border:0;background:#0B0703;";
     UNI.appendChild(bar); UNI.appendChild(fr);
     D.body.appendChild(UNI);
     D.body.classList.add("lock");
     bar.querySelector("#uniBack").addEventListener("click", closeUniverse);
   }
-  function closeUniverse() {
-    if (!UNI) return;
-    if (UNI.parentNode) UNI.parentNode.removeChild(UNI);
-    UNI = null;
-    D.body.classList.remove("lock");
-  }
-  window.addEventListener("message", function (ev) {
-    var d = ev.data;
-    if (d && d.md === "uniback") closeUniverse();
-  });
+  function closeUniverse() { if (!UNI) return; if (UNI.parentNode) UNI.parentNode.removeChild(UNI); UNI = null; D.body.classList.remove("lock"); }
+  window.addEventListener("message", function (ev) { var d = ev.data; if (d && d.md === "uniback") closeUniverse(); });
   D.addEventListener("keydown", function (ev) { if (ev.key === "Escape" && UNI) closeUniverse(); });
-
-  function universeLink(href, label) {
-    return { href: href, label: label };
-  }
   function injectUniverses() {
     addSymbol("i-truck", "<path d='M1 6h12v10H1Z'/><path d='M13 9h5l3 3v4h-8Z'/><circle cx='6' cy='18' r='1.9'/><circle cx='17' cy='18' r='1.9'/><path d='M3 9h6'/>");
     addSymbol("i-moto", "<circle cx='5' cy='17' r='3.4'/><circle cx='19' cy='17' r='3.4'/><path d='M5 17l3-7h5l3 4h3'/><path d='M13 10l-2-3H8'/><path d='M16 14l2-4h2'/>");
@@ -135,7 +142,7 @@
     var rail = D.getElementById("rail");
     if (rail && !D.getElementById("uninav")) {
       var wrap = D.createElement("div"); wrap.id = "uninav";
-      UNIS.forEach(function (u, i) {
+      UNIS.forEach(function (u) {
         var a = D.createElement("a");
         a.className = "nv"; a.href = u[0]; a.dataset.uni = u[0];
         a.innerHTML = "<svg class='ic' style='color:" + u[3] + "'><use href='#" + u[2] + "'/></svg><span>" + u[1] + "</span><em style='color:" + u[3] + ";border-color:" + u[3] + "55'>" + u[4] + "</em>";
@@ -165,16 +172,14 @@
     D.addEventListener("click", function (ev) {
       var el = ev.target.closest ? ev.target.closest("[data-uni]") : null;
       if (!el) return;
-      var url = el.dataset.uni;
       ev.preventDefault();
-      openUniverse(url, url === "pl.html" ? "POIDS LOURDS" : "MOTOS & QUADS");
+      openUniverse(el.dataset.uni, el.dataset.uni === "pl.html" ? "POIDS LOURDS" : "MOTOS & QUADS");
     });
   }
-
   window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferred = e; installBtnState(); status(); });
   window.addEventListener("appinstalled", function () { deferred = null; installed = true; installBtnState(); status(); });
   window.MD_PWA = { icons: GEN, sizes: SIZES, generate: generate, status: status, isWeb: isWeb, openUniverse: openUniverse, closeUniverse: closeUniverse };
-  function boot() { standalone(); icons(); installBtn(); net(); sw(); status(); injectUniverses(); setTimeout(status, 1200); setTimeout(status, 3600); }
+  function boot() { standalone(); installBtn(); net(); sw(); status(); injectUniverses(); idle(icons, 1200); setTimeout(status, 1500); }
   if (D.readyState === "loading") D.addEventListener("DOMContentLoaded", boot); else boot();
   window.__MD_SCRIPTS.pwa = true;
 })();
