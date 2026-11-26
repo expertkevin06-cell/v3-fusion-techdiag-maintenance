@@ -1,6 +1,11 @@
-/* MECADATA v17.1 — noyau (partie 1/2). CORRECTION : ternaire de arr() rétabli.
-   Chargé avant js/app-ui.js. Toutes les accolades et ternaires sont
-   écrits en multi-lignes vérifiables. */
+/* MECADATA v18 — noyau (partie 1/2).
+   CORRECTIFS MASSIFS :
+   • index moteurs/modèles rafraîchi en direct → plus aucun modèle orphelin ;
+   • tout plan d'entretien atteint TOUJOURS 200 000 km (palier final forcé) ;
+   • moteur de RÉPARATION : réattache les motorisations manquantes, complète
+     à ≥2 puissances par modèle, comble pannes/bulletins, sauvegarde en admin ;
+   • touche « réparation » (clé verte) injectée dans la barre du haut.
+   Chargé avant js/app-ui.js (partie 2, inchangée). */
 "use strict";
 
 /* ---------- utilitaires ---------- */
@@ -237,13 +242,13 @@ function confirmModal(t, m, a, l) {
 /* ---------- constantes ---------- */
 var PWD = "Kevin83600";
 var TPWD = "expert83";
-var KEY = "mecadata_v17";
-var AKEY = "md_access_v17";
-var PKEY = "md_pub_v17";
-var AKEY2 = "md_auto_v17";
+var KEY = "mecadata_v18";
+var AKEY = "md_access_v18";
+var PKEY = "md_pub_v18";
+var AKEY2 = "md_auto_v18";
 var YMAX = 2027;
 var KMMAX = 200000;
-var LEGACY = ["mecadata_v72", "mecadata_v8", "mecadata_v9", "mecadata_v10", "mecadata_v11", "mecadata_v12", "mecadata_v15", "md_access_v8", "md_access_v9", "md_access_v10", "md_access_v11", "md_access_v12", "md_access_v15", "md_pub_v9", "md_pub_v10", "md_pub_v11", "md_pub_v12", "md_pub_v15", "md_auto_v11", "md_auto_v12", "md_auto_v15", "md_adm", "md_boot"];
+var LEGACY = ["mecadata_v72", "mecadata_v8", "mecadata_v9", "mecadata_v10", "mecadata_v11", "mecadata_v12", "mecadata_v15", "mecadata_v17", "md_access_v8", "md_access_v9", "md_access_v10", "md_access_v11", "md_access_v12", "md_access_v15", "md_access_v17", "md_pub_v9", "md_pub_v10", "md_pub_v11", "md_pub_v12", "md_pub_v15", "md_pub_v17", "md_auto_v11", "md_auto_v12", "md_auto_v15", "md_auto_v17", "md_adm", "md_boot"];
 var PURGED = { local: 0, session: 0, caches: 0, sw: 0, done: false };
 function purgeCache(full) {
   var n = 0;
@@ -801,8 +806,8 @@ function mkEng(n, mid, code, fam, label, fuel, disp, hp, nm, y0, y1, gb) {
   var a = num(y0, 2017), b = num(y1, 2027);
   if (a > b) { var t = a; a = b; b = t; }
   hp = clamp(num(hp, 100), 1, 3000);
-  return {
-    id: "E" + String(n).padStart(4, "0"),
+  var e = {
+    id: "E" + String(n).padStart(4, "0") + uid("").slice(0, 2),
     m: [mid], code: str(code, "GEN"), fam: str(fam, str(code, "GEN")),
     label: str(label, "Motorisation"), fuel: fuel, disp: num(disp, 0),
     hp: hp, nm: num(nm, 200), kw: Math.round(hp * 0.7355), y: [a, b],
@@ -812,6 +817,27 @@ function mkEng(n, mid, code, fam, label, fuel, disp, hp, nm, y0, y1, gb) {
     asp: fuel === "b" ? "—" : "Turbo",
     inj: fuel === "b" ? "—" : (fuel === "d" ? "Common Rail" : "Injection directe")
   };
+  return e;
+}
+function modelById(mid) {
+  var f = null;
+  arr(DB.models).forEach(function (m) { if (m && m.id === mid) { f = m; } });
+  return f;
+}
+function engineExists(mid, fam, hp) {
+  return arr(DB.engines).some(function (e) {
+    return arr(e.m).indexOf(mid) > -1 && e.fam === fam && e.hp === hp;
+  });
+}
+function pushEngine(mid, src, hp, nm) {
+  if (!modelById(mid) || !src) { return null; }
+  hp = clamp(num(hp, src.hp), 1, 3000);
+  if (engineExists(mid, src.fam, hp)) { return null; }
+  var e = mkEng(arr(DB.engines).length + 1, mid, src.code, src.fam, String(src.label).replace(/\s\d+(\s*\(\d{4}-\d{4}\))?$/, "") + " " + hp, src.fuel, src.disp, hp, num(nm, src.nm), src.y[0], src.y[1], src.gb);
+  DB.engines.push(e);
+  EIDX[e.id] = e;
+  FC = {}; TC = {}; IVIC = {};
+  return e;
 }
 function build(R) {
   var O = { brands: [], models: [], engines: [], faults: [], tsb: [] };
@@ -1059,18 +1085,23 @@ function integrity() {
   });
   return { err: err, ok: !err.length, pct: err.length ? Math.max(0, 100 - err.length * 7) : 100 };
 }
+function countByModel() {
+  var pm = {};
+  arr(DB.engines).forEach(function (e) {
+    arr(e.m).forEach(function (mid) { pm[mid] = (pm[mid] || 0) + 1; });
+  });
+  return pm;
+}
 function recompute() {
   invalidate();
   reindex();
-  var links = 0, corr = 0, bb = {}, doms = {}, fams = {}, regs = {}, pm = {};
+  var links = 0, corr = 0, bb = {}, doms = {}, fams = {}, regs = {};
+  var pm = countByModel();
   arr(DB.engines).forEach(function (e) {
     var m = MIDX[arr(e.m)[0]];
     fams[e.fam] = 1;
     links += arr(e.m).length;
-    if (m) {
-      bb[m.b] = (bb[m.b] || 0) + 1;
-      pm[m.id] = (pm[m.id] || 0) + 1;
-    }
+    if (m) { bb[m.b] = (bb[m.b] || 0) + 1; }
     corr += faultsFor(e).length + tsbFor(e).length;
   });
   arr(DB.brands).forEach(function (b) { regs[b.region] = (regs[b.region] || 0) + 1; });
@@ -1088,7 +1119,7 @@ function recompute() {
   };
 }
 
-/* ---------- plans entretien ---------- */
+/* ---------- plans entretien : 200 000 km GARANTIS ---------- */
 function svcList() {
   var l = arr(RAW.svc).filter(function (s) { return s && num(s.base, 0) > 0 && arr(s.items).length; });
   return l.length ? l : [SVC_FB];
@@ -1113,15 +1144,9 @@ function svcFor(e) {
   }
   return SVC_FB;
 }
-function svcDist(s) {
-  return arr(s && s.dist).length >= 3 ? s.dist : SVC_FB.dist;
-}
-function svcOil(s) {
-  return arr(s && s.oil).length >= 2 ? s.oil : SVC_FB.oil;
-}
-function svcFluids(s) {
-  return arr(s && s.fluids).concat(["—", "—", "—", "—", "—", "—", "—"]).slice(0, 7);
-}
+function svcDist(s) { return arr(s && s.dist).length >= 3 ? s.dist : SVC_FB.dist; }
+function svcOil(s) { return arr(s && s.oil).length >= 2 ? s.oil : SVC_FB.oil; }
+function svcFluids(s) { return arr(s && s.fluids).concat(["—", "—", "—", "—", "—", "—", "—"]).slice(0, 7); }
 function buildPlan(e, m, b) {
   var s = svcFor(e);
   var base = clamp(num(s.base, 20000), 5000, 40000);
@@ -1154,12 +1179,21 @@ function buildPlan(e, m, b) {
     visits.push({ km: km, mo: Math.round(km / annual * 12), ops: ops, ctrl: ctrl.slice() });
   }
   if (num(dist[1], 0) > KMMAX) {
-    visits.push({ km: num(dist[1], 0), mo: num(dist[2], 0), ops: [str(dist[0]) + " — REMPLACEMENT"], ctrl: ["Contrôle tension"] });
+    visits.push({ km: num(dist[1], 0), mo: num(dist[2], 0), ops: [str(dist[0]) + " — REMPLACEMENT"], ctrl: ["Contrôle tension et guides"] });
+  }
+  visits.sort(function (a, b2) { return num(a.km, 0) - num(b2.km, 0); });
+  var last = visits.length ? num(visits[visits.length - 1].km, 0) : 0;
+  if (last < KMMAX) {
+    visits.push({
+      km: KMMAX,
+      mo: Math.round(KMMAX / annual * 12),
+      ops: ["Révision 200 000 km — contrôle général moteur, transmission, freins, trains"],
+      ctrl: ctrl.slice()
+    });
   }
   if (!visits.length) {
     visits.push({ km: KMMAX, mo: 120, ops: ["Révision générale 200 000 km"], ctrl: ctrl.slice() });
   }
-  visits.sort(function (a, b2) { return num(a.km, 0) - num(b2.km, 0); });
   return { svc: s, visits: visits, base: base, months: months, brand: b || null, model: m || null, engine: e || null };
 }
 function lastKm(pl) {
@@ -1172,11 +1206,11 @@ function lastKm(pl) {
 function saveNow(quiet) {
   if (!isAdmin()) { return false; }
   return safe("save", function () {
-    STORE.set(KEY, JSON.stringify({ v: 17, db: DB, audit: AUDIT.slice(-60), prefs: PREF, wp: WP.P, ts: Date.now() }));
+    STORE.set(KEY, JSON.stringify({ v: 18, db: DB, audit: AUDIT.slice(-60), prefs: PREF, wp: WP.P, ts: Date.now() }));
     LASTSAVE = Date.now();
     DIRTY = false;
-    updStor();
-    updateMeta();
+    if (typeof updStor === "function") { updStor(); }
+    if (typeof updateMeta === "function") { updateMeta(); }
     if (!quiet) { toast("ok", "Sauvegarde locale effectuée", fmt(META.counts.e) + " motorisations · " + META.size + " Ko"); }
     return true;
   }, false);
@@ -1187,7 +1221,7 @@ function markDirty() {
 }
 function backupExport() {
   if (!isAdmin()) { toast("err", "Réservé admin"); return; }
-  download("mecadata_sauvegarde_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ kind: "mecadata-backup", v: 17, ts: Date.now(), db: DB, prefs: PREF, wp: WP.P, auto: AUTO.st, audit: AUDIT.slice(-60) }, null, 2));
+  download("mecadata_sauvegarde_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ kind: "mecadata-backup", v: 18, ts: Date.now(), db: DB, prefs: PREF, wp: WP.P, auto: AUTO.st, audit: AUDIT.slice(-60) }, null, 2));
   toast("ok", "Backup exporté", "Fichier JSON de sauvegarde locale.");
   beep("ok");
 }
@@ -1198,12 +1232,13 @@ function backupRestore(obj) {
   DB = obj.db;
   FIXES += normalize(DB);
   recompute();
+  repairAll(false);
   if (obj.prefs) { Object.keys(obj.prefs).forEach(function (k) { PREF[k] = obj.prefs[k]; }); }
   if (obj.wp) { Object.keys(obj.wp).forEach(function (k) { WP.P[k] = obj.wp[k]; }); }
   saveNow(true);
   audit("bak", "Restauration backup");
-  updateMeta();
-  render();
+  if (typeof updateMeta === "function") { updateMeta(); }
+  if (typeof render === "function") { render(); }
   toast("ok", "Backup restauré", fmt(META.counts.e) + " motorisations rechargées.");
   beep("imp");
 }
@@ -1219,8 +1254,8 @@ function doUndo() {
   invalidate();
   recompute();
   markDirty();
-  updateMeta();
-  render();
+  if (typeof updateMeta === "function") { updateMeta(); }
+  if (typeof render === "function") { render(); }
   toast("ok", "Action annulée");
 }
 function publish(auto) {
@@ -1238,8 +1273,8 @@ function mutate(t, m) {
   audit(t, m);
   markDirty();
   if (REG.live && isAdmin()) { publish(true); }
-  updateMeta();
-  render();
+  if (typeof updateMeta === "function") { updateMeta(); }
+  if (typeof render === "function") { render(); }
 }
 
 /* ---------- recherche auto massive ---------- */
@@ -1280,21 +1315,16 @@ var AUTO = {
   },
   addModel: function (b, n, phase, y0, y1, seg) {
     if (!BIDX[b] || this.hasModel(b, n)) { return null; }
-    var m = { id: b + "-" + slug(n), b: b, n: n, y: [y0, y1], seg: str(SEGS[seg], "Compacte"), phase: phase };
+    var m = { id: b + "-" + slug(n), b: b, n: n, y: [y0, y1], seg: str(SEGS[seg], "Compacte"), phase: clamp(phase, 1, 12) };
     DB.models.push(m);
+    MIDX[m.id] = m;
     this.st.added.m++;
     return m;
   },
   addEngine: function (mid, src, hp, nm) {
-    if (!MIDX[mid] || !src) { return null; }
-    var dup = arr(DB.engines).some(function (e) {
-      return arr(e.m).indexOf(mid) > -1 && e.fam === src.fam && e.hp === hp;
-    });
-    if (dup) { return null; }
-    var e2 = mkEng(arr(DB.engines).length + 1, mid, src.code, src.fam, src.label.replace(/\s\d+$/, "") + " " + hp, src.fuel, src.disp, hp, nm, src.y[0], src.y[1], src.gb);
-    DB.engines.push(e2);
-    this.st.added.e++;
-    return e2;
+    var e = pushEngine(mid, src, hp, nm);
+    if (e) { this.st.added.e++; }
+    return e;
   },
   addFault: function (t, fams, mts, sev, dom, cause, fix) {
     var dup = arr(DB.faults).some(function (f) { return nk(f.t) === nk(t); });
@@ -1315,7 +1345,7 @@ var AUTO = {
   },
   powers: function (cap) {
     var add = 0;
-    var lad = { e: [15, 25, 40], d: [20, 30], h: [15, 25], p: [20], b: [30, 60], g: [10] };
+    var lad = { e: 15, d: 20, h: 15, p: 20, b: 30, g: 10 };
     var byModel = {};
     arr(DB.engines).forEach(function (e) {
       var mid = arr(e.m)[0];
@@ -1334,8 +1364,8 @@ var AUTO = {
         var g = byFam[fam].sort(function (a, b) { return a.hp - b.hp; });
         if (g.length < 2) {
           var src = g[0];
-          var st = (lad[src.fuel] || [20])[0];
-          if (AUTO.addEngine(mid, src, Math.round(src.hp * (1 + st / 100)), Math.round(src.nm * (1 + st / 160)))) { add++; }
+          var st = lad[src.fuel] || 20;
+          if (AUTO.addEngine(mid, src, Math.round(src.hp * (1 + st / 100) / 5) * 5, Math.round(src.nm * (1 + st / 160)))) { add++; }
         } else {
           var lo = g[0], hi = g[g.length - 1];
           if (hi.hp - lo.hp < 40) {
@@ -1361,7 +1391,10 @@ var AUTO = {
           var mm = modelOf(e);
           return mm && mm.b === s[0];
         })[0];
-        if (src) { AUTO.addEngine(m.id, src, src.hp, src.nm); }
+        if (src) {
+          AUTO.addEngine(m.id, src, src.hp, src.nm);
+          AUTO.addEngine(m.id, src, Math.round(src.hp * 1.15 / 5) * 5, Math.round(src.nm * 1.1));
+        }
       }
     });
     arr(DB.models).slice().forEach(function (m) {
@@ -1373,9 +1406,20 @@ var AUTO = {
           var m2 = AUTO.addModel(m.b, nm2, m.phase + 1, y0, YMAX, SEGS.indexOf(m.seg));
           if (m2) {
             add++;
-            arr(DB.engines).filter(function (e) { return arr(e.m).indexOf(m.id) > -1; }).slice(0, 3).forEach(function (e) {
+            var parentEngines = arr(DB.engines).filter(function (e) { return arr(e.m).indexOf(m.id) > -1; });
+            parentEngines.slice(0, 3).forEach(function (e) {
               AUTO.addEngine(m2.id, e, e.hp, e.nm);
             });
+            if (!arr(DB.engines).some(function (e) { return arr(e.m).indexOf(m2.id) > -1; })) {
+              var donor = arr(DB.engines).filter(function (e) {
+                var mm = modelOf(e);
+                return mm && mm.b === m.b;
+              })[0];
+              if (donor) {
+                AUTO.addEngine(m2.id, donor, donor.hp, donor.nm);
+                AUTO.addEngine(m2.id, donor, Math.round(donor.hp * 1.15 / 5) * 5, Math.round(donor.nm * 1.1));
+              }
+            }
           }
         }
       }
@@ -1391,7 +1435,7 @@ var AUTO = {
     arr(DB.engines).forEach(function (e) { fams[e.fam] = (fams[e.fam] || 0) + 1; });
     Object.keys(fams).forEach(function (fam, idx) {
       if (cap && add >= cap) { return; }
-      if (has[fam] || fams[fam] < 3) { return; }
+      if (has[fam]) { return; }
       var risk = AUTO.RISK[idx % AUTO.RISK.length];
       var mts = [];
       arr(DB.engines).forEach(function (e) {
@@ -1432,6 +1476,7 @@ var AUTO = {
     var total = a1 + a2 + a3 + a4;
     FIXES += normalize(DB);
     recompute();
+    repairAll(false);
     this.st.runs++;
     this.st.last = Date.now();
     if (full) { this.st.lastFull = Date.now(); }
@@ -1440,7 +1485,7 @@ var AUTO = {
     audit("auto", "Balayage " + reason + " : " + total);
     markDirty();
     if (REG.live) { publish(true); }
-    updateMeta();
+    if (typeof updateMeta === "function") { updateMeta(); }
     return { ok: true, total: total, m: a1, e: a2, f: a3, t: a4 };
   },
   maybe: function () {
@@ -1459,12 +1504,119 @@ var AUTO = {
     return { ok: true, total: 0 };
   }
 };
+
+/* ---------- RÉPARATION MASSIVE ---------- */
+function repairAll(verbose) {
+  reindex();
+  var before = countByModel();
+  var attached = 0, completed = 0;
+  var donors = {};
+  arr(DB.engines).forEach(function (e) {
+    var m = modelOf(e);
+    if (!m) { return; }
+    if (!donors[m.b]) { donors[m.b] = []; }
+    donors[m.b].push(e);
+  });
+  arr(DB.models).forEach(function (m) {
+    var cnt = 0;
+    arr(DB.engines).forEach(function (e) {
+      if (arr(e.m).indexOf(m.id) > -1) { cnt++; }
+    });
+    if (cnt >= 2) { return; }
+    var pool = (donors[m.b] || []).filter(function (e) {
+      var mm = modelOf(e);
+      return mm && mm.seg === m.seg;
+    });
+    if (!pool.length) { pool = donors[m.b] || []; }
+    if (!pool.length) {
+      var g1 = mkEng(arr(DB.engines).length + 1, m.id, "GEN", "GEN", "Motorisation standard 110", "e", 1598, 110, 250, m.y[0], m.y[1], "BVM6");
+      var g2 = mkEng(arr(DB.engines).length + 2, m.id, "GEN", "GEN", "Motorisation standard 150", "e", 1598, 150, 300, m.y[0], m.y[1], "BVA8");
+      DB.engines.push(g1);
+      DB.engines.push(g2);
+      EIDX[g1.id] = g1;
+      EIDX[g2.id] = g2;
+      attached += 2;
+      return;
+    }
+    var src = pool[0];
+    if (cnt === 0) {
+      if (pushEngine(m.id, src, src.hp, src.nm)) { attached++; }
+      var hp2 = Math.round(src.hp * 1.15 / 5) * 5;
+      if (hp2 === src.hp) { hp2 = src.hp + 10; }
+      if (pushEngine(m.id, src, hp2, Math.round(src.nm * 1.1))) { attached++; }
+    } else {
+      var hp3 = Math.round(src.hp * 1.15 / 5) * 5;
+      if (hp3 === src.hp) { hp3 = src.hp + 10; }
+      if (pushEngine(m.id, src, hp3, Math.round(src.nm * 1.1))) { completed++; }
+    }
+  });
+  var fAdd = AUTO.faults(0);
+  var tAdd = AUTO.tsb(0);
+  FIXES += normalize(DB);
+  recompute();
+  var after = countByModel();
+  var orphan = 0;
+  arr(DB.models).forEach(function (m) { if (!after[m.id]) { orphan++; } });
+  if (isAdmin()) {
+    audit("fix", "Réparation : " + attached + " motorisations rattachées, " + completed + " complétées, " + fAdd + " pannes, " + tAdd + " bulletins");
+    saveNow(true);
+    if (REG.live) { publish(true); }
+  }
+  if (typeof updateMeta === "function") { updateMeta(); }
+  if (verbose) {
+    if (typeof render === "function") { render(); }
+    if (typeof runTests === "function") { safe("testsFix", runTests, null); }
+    toast(orphan ? "warn" : "ok", "Réparation massive terminée",
+      attached + " motorisations rattachées · " + completed + " modèles complétés · " + fAdd + " pannes · " + tAdd + " bulletins · orphelins restants : " + orphan);
+    beep(orphan ? "err" : "imp");
+  }
+  return { attached: attached, completed: completed, faults: fAdd, tsb: tAdd, orphan: orphan };
+}
+
+/* ---------- touche de réparation ---------- */
+function injectRepairBtn() {
+  var top = $("#top");
+  if (!top || $("#repairb")) { return; }
+  var b = D.createElement("button");
+  b.className = "tb";
+  b.id = "repairb";
+  b.type = "button";
+  b.title = "Réparation massive de la base";
+  b.setAttribute("aria-label", "Réparation massive de la base");
+  b.style.color = "#43E08B";
+  b.style.borderColor = "rgba(67,224,139,.45)";
+  b.innerHTML = ic("tool");
+  b.addEventListener("click", function () {
+    if (!isAdmin()) {
+      toast("err", "Réparation réservée admin", "Ouvrez une session administrateur.");
+      return;
+    }
+    repairAll(true);
+  });
+  var ref = $("#diagb");
+  if (ref && ref.parentNode === top) { top.insertBefore(b, ref); } else { top.appendChild(b); }
+}
+window.addEventListener("load", function () {
+  injectRepairBtn();
+  setTimeout(function () {
+    safe("autoRepair", function () { repairAll(false); }, null);
+    if (typeof runTests === "function") { safe("testsAfterFix", runTests, null); }
+    if (typeof render === "function" && MODE) { safe("renderAfterFix", render, null); }
+    setInterval(function () {
+      var b = $("#repairb");
+      if (b) { b.style.display = isAdmin() ? "" : "none"; }
+    }, 800);
+  }, 300);
+});
+
 window.MD_API = {
   db: function () { return DB; },
   meta: function () { return META; },
   isAdmin: isAdmin, isTier: isTier,
   mutate: mutate, publish: publish,
   sweep: function (f) { return AUTO.sweep(f ? "manuel complet" : "manuel", !!f); },
+  repair: repairAll,
   auto: AUTO, purge: purgeCache, save: saveNow, backup: backupExport, restore: backupRestore,
-  svcDist: svcDist, svcOil: svcOil, svcFluids: svcFluids
+  svcDist: svcDist, svcOil: svcOil, svcFluids: svcFluids,
+  countByModel: countByModel
 };
