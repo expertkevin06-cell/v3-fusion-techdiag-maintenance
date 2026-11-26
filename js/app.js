@@ -1,9 +1,6 @@
-/* MECADATA v17 — moteur fiable, format multi-lignes vérifiable.
-   Fonctions : portail admin/tiers (1 case mot de passe tiers), parc cascades,
-   plans 200 000 km, recherche prédictive, pannes/TSB/rappels corrélés,
-   studio fonds dynamiques, administration (imports, exports, méga-base,
-   sauvegarde locale + backup, diffusion), recherche auto massive,
-   autovérification, purge cache à l'ouverture. */
+/* MECADATA v17.1 — noyau (partie 1/2). CORRECTION : ternaire de arr() rétabli.
+   Chargé avant js/app-ui.js. Toutes les accolades et ternaires sont
+   écrits en multi-lignes vérifiables. */
 "use strict";
 
 /* ---------- utilitaires ---------- */
@@ -14,7 +11,10 @@ var EM = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return EM[c]; });
 }
-function num(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
+function num(v, d) {
+  var n = Number(v);
+  return isFinite(n) ? n : d;
+}
 function fmt(n) {
   n = num(n, 0);
   try { return n.toLocaleString("fr-FR"); } catch (e) { return String(n); }
@@ -24,10 +24,14 @@ function uid(p) { return p + Math.random().toString(36).slice(2, 7).toUpperCase(
 function clone(o) {
   try { return JSON.parse(JSON.stringify(o)); } catch (e) { return o; }
 }
-function arr(v) { return Array.isArray(v) v : []; }
+function arr(v) {
+  if (Array.isArray(v)) { return v; }
+  return [];
+}
 function str(v, d) {
   var s = String(v == null ? "" : v).trim();
-  return s || (d == null ? "" : d);
+  if (s) { return s; }
+  return (d == null ? "" : d);
 }
 function list(v) {
   if (Array.isArray(v)) { return v.filter(Boolean); }
@@ -37,9 +41,18 @@ function pair(v, d) {
   var a = arr(v);
   return [num(a[0], d[0]), num(a[1], d[1])];
 }
-function kmOf(f) { var p = pair(f && f.km, [0, 200000]); return p[0] > p[1] ? [p[1], p[0]] : p; }
-function yOf(f) { var p = pair(f && f.y, [2017, 2027]); return p[0] > p[1] ? [p[1], p[0]] : p; }
-function costOf(f) { var p = pair(f && f.cost, [0, 0]); return p[1] < p[0] ? [p[0], p[0]] : p; }
+function kmOf(f) {
+  var p = pair(f && f.km, [0, 200000]);
+  return p[0] > p[1] ? [p[1], p[0]] : p;
+}
+function yOf(f) {
+  var p = pair(f && f.y, [2017, 2027]);
+  return p[0] > p[1] ? [p[1], p[0]] : p;
+}
+function costOf(f) {
+  var p = pair(f && f.cost, [0, 0]);
+  return p[1] < p[0] ? [p[0], p[0]] : p;
+}
 function ov(a, b) {
   var x = pair(a, [0, 0]);
   var y = pair(b, [0, 0]);
@@ -57,8 +70,11 @@ function deb(f, t) {
   };
 }
 function idle(f, ms) {
-  if (window.requestIdleCallback) { requestIdleCallback(function () { f(); }, { timeout: ms || 1500 }); }
-  else { setTimeout(f, ms || 250); }
+  if (window.requestIdleCallback) {
+    requestIdleCallback(function () { f(); }, { timeout: ms || 1500 });
+  } else {
+    setTimeout(f, ms || 250);
+  }
 }
 function nk(s) {
   return String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
@@ -84,7 +100,11 @@ var MEM = {};
 var STORE = {
   local: false,
   probe: function () {
-    try { localStorage.setItem("__m", "1"); localStorage.removeItem("__m"); this.local = true; } catch (e) {}
+    try {
+      localStorage.setItem("__m", "1");
+      localStorage.removeItem("__m");
+      this.local = true;
+    } catch (e) {}
   },
   get: function (k) {
     if (this.local) {
@@ -94,7 +114,10 @@ var STORE = {
   },
   set: function (k, v) {
     if (this.local) {
-      try { localStorage.setItem(k, v); return true; } catch (e) { this.local = false; }
+      try {
+        localStorage.setItem(k, v);
+        return true;
+      } catch (e) { this.local = false; }
     }
     MEM[k] = v;
     return true;
@@ -121,7 +144,7 @@ function download(n, c) {
   }, null);
 }
 
-/* ---------- son & toasts & modales ---------- */
+/* ---------- son, toasts, modales ---------- */
 var PREF = { sound: true };
 var AUC = { ctx: null };
 function beep(k) {
@@ -772,7 +795,7 @@ function applyTier() {
 }
 function invalidate() { FC = {}; TC = {}; IVIC = {}; }
 
-/* ---------- construction base ---------- */
+/* ---------- construction & normalisation ---------- */
 function mkEng(n, mid, code, fam, label, fuel, disp, hp, nm, y0, y1, gb) {
   fuel = nfuel(fuel);
   var a = num(y0, 2017), b = num(y1, 2027);
@@ -853,15 +876,18 @@ function normalize(d) {
   var bs = {}, ms = {}, seen = {};
   d.brands = arr(d.brands).filter(function (b) {
     if (!b || !b.id || seen["b" + b.id]) { fx++; return false; }
-    seen["b" + b.id] = 1; bs[b.id] = 1;
+    seen["b" + b.id] = 1;
+    bs[b.id] = 1;
     b.n = str(b.n, b.id);
     if (!REGIONS[b.region]) { b.region = regionOf(b.pays); fx++; }
     return true;
   });
   d.models = arr(d.models).filter(function (m) {
     if (!m || !m.id || !bs[m.b] || seen["m" + m.id]) { fx++; return false; }
-    seen["m" + m.id] = 1; ms[m.id] = 1;
-    m.n = str(m.n, "Modèle"); m.y = yOf(m);
+    seen["m" + m.id] = 1;
+    ms[m.id] = 1;
+    m.n = str(m.n, "Modèle");
+    m.y = yOf(m);
     m.phase = clamp(num(m.phase, 1), 1, 12);
     m.seg = str(m.seg, "Compacte");
     return true;
@@ -872,7 +898,9 @@ function normalize(d) {
     if (!e.m.length) { fx++; return false; }
     if (seen["e" + e.id]) { e.id = uid("E"); fx++; }
     seen["e" + e.id] = 1;
-    e.code = str(e.code, "GEN"); e.fam = str(e.fam, e.code); e.label = str(e.label, "Motorisation");
+    e.code = str(e.code, "GEN");
+    e.fam = str(e.fam, e.code);
+    e.label = str(e.label, "Motorisation");
     e.fuel = nfuel(e.fuel);
     e.hp = clamp(num(e.hp, 100), 1, 3000);
     e.nm = num(e.nm, 200);
@@ -885,25 +913,40 @@ function normalize(d) {
     if (!f || !f.id) { fx++; return false; }
     if (seen["f" + f.id]) { f.id = uid("F"); fx++; }
     seen["f" + f.id] = 1;
-    f.t = str(f.t, "Fiche"); f.sev = nsev(f.sev); f.freq = nfreq(f.freq);
-    f.fam = list(f.fam); f.mt = list(f.mt); f.ph = list(f.ph); f.sym = list(f.sym);
+    f.t = str(f.t, "Fiche");
+    f.sev = nsev(f.sev);
+    f.freq = nfreq(f.freq);
+    f.fam = list(f.fam);
+    f.mt = list(f.mt);
+    f.ph = list(f.ph);
+    f.sym = list(f.sym);
     if (!f.sym.length) { f.sym = ["Symptôme à confirmer"]; }
-    f.y = yOf(f); f.km = kmOf(f); f.cost = costOf(f);
-    f.cause = str(f.cause, "—"); f.fix = str(f.fix, "—");
-    f.dom = str(f.dom, "Moteur"); f.status = str(f.status, "Surveillance");
+    f.y = yOf(f);
+    f.km = kmOf(f);
+    f.cost = costOf(f);
+    f.cause = str(f.cause, "—");
+    f.fix = str(f.fix, "—");
+    f.dom = str(f.dom, "Moteur");
+    f.status = str(f.status, "Surveillance");
     return true;
   });
   d.tsb = arr(d.tsb).filter(function (t) {
     if (!t || !t.id) { fx++; return false; }
     if (seen["t" + t.id]) { t.id = uid("T"); fx++; }
     seen["t" + t.id] = 1;
-    t.ref = str(t.ref, t.id); t.t = str(t.t, "Bulletin"); t.sev = nsev(t.sev);
+    t.ref = str(t.ref, t.id);
+    t.t = str(t.t, "Bulletin");
+    t.sev = nsev(t.sev);
     t.b = list(t.b).filter(function (x) { return bs[x]; });
-    t.fam = list(t.fam); t.mt = list(t.mt); t.ph = list(t.ph);
+    t.fam = list(t.fam);
+    t.mt = list(t.mt);
+    t.ph = list(t.ph);
     t.date = str(t.date, "2026-01");
     if (!/^\d{4}-\d{2}$/.test(t.date)) { t.date = "2026-01"; }
-    t.cat = str(t.cat, "Moteur"); t.dom = str(t.dom, t.cat);
-    t.sum = str(t.sum, "—"); t.act = str(t.act, "—");
+    t.cat = str(t.cat, "Moteur");
+    t.dom = str(t.dom, t.cat);
+    t.sum = str(t.sum, "—");
+    t.act = str(t.act, "—");
     return true;
   });
   return fx;
@@ -1070,6 +1113,15 @@ function svcFor(e) {
   }
   return SVC_FB;
 }
+function svcDist(s) {
+  return arr(s && s.dist).length >= 3 ? s.dist : SVC_FB.dist;
+}
+function svcOil(s) {
+  return arr(s && s.oil).length >= 2 ? s.oil : SVC_FB.oil;
+}
+function svcFluids(s) {
+  return arr(s && s.fluids).concat(["—", "—", "—", "—", "—", "—", "—"]).slice(0, 7);
+}
 function buildPlan(e, m, b) {
   var s = svcFor(e);
   var base = clamp(num(s.base, 20000), 5000, 40000);
@@ -1078,7 +1130,7 @@ function buildPlan(e, m, b) {
   if (!items.length) { items = SVC_FB.items; }
   var ctrl = arr(s.controls).filter(Boolean);
   if (!ctrl.length) { ctrl = SVC_FB.controls; }
-  var dist = arr(s.dist).length >= 3 ? s.dist : SVC_FB.dist;
+  var dist = svcDist(s);
   var annual = Math.max(8000, Math.round(base * 12 / months));
   var visits = [];
   var km, i;
@@ -1413,5 +1465,6 @@ window.MD_API = {
   isAdmin: isAdmin, isTier: isTier,
   mutate: mutate, publish: publish,
   sweep: function (f) { return AUTO.sweep(f ? "manuel complet" : "manuel", !!f); },
-  auto: AUTO, purge: purgeCache, save: saveNow, backup: backupExport, restore: backupRestore
+  auto: AUTO, purge: purgeCache, save: saveNow, backup: backupExport, restore: backupRestore,
+  svcDist: svcDist, svcOil: svcOil, svcFluids: svcFluids
 };
