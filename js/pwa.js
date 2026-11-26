@@ -1,6 +1,8 @@
-/* MECADATA v13 — couche PWA + entrée Poids Lourds.
-   Injecte une case « PL » dédiée (rail, onglets mobile, barre du haut)
-   pointant vers pl.html : univers poids lourd totalement séparé du tourisme. */
+/* MECADATA v14 — PWA + lanceur d'univers séparés (PL, MOTOS/QUAD).
+   Les univers s'ouvrent dans un overlay iframe : la page tourisme (et sa
+   session déjà authentifiée) reste vivante en arrière-plan. La touche retour
+   de l'univers ferme l'overlay → retour DIRECT au menu tourisme, sans portail
+   ni mot de passe. Si l'overlay est impossible, repli lien classique. */
 (function () {
   "use strict";
   var D = document;
@@ -10,17 +12,10 @@
   var GEN = {}, deferred = null, installed = false, swReg = null;
 
   function draw(c, s, mask) {
-    c.clearRect(0, 0, s, s);
-    c.save();
-    if (!mask) {
-      var r = s * 0.22;
-      c.beginPath(); c.moveTo(r, 0); c.lineTo(s - r, 0); c.quadraticCurveTo(s, 0, s, r);
-      c.lineTo(s, s - r); c.quadraticCurveTo(s, s, s - r, s); c.lineTo(r, s); c.quadraticCurveTo(0, s, 0, s - r);
-      c.lineTo(0, r); c.quadraticCurveTo(0, 0, r, 0); c.closePath(); c.clip();
-    }
+    c.clearRect(0, 0, s, s); c.save();
+    if (!mask) { var r = s * 0.22; c.beginPath(); c.moveTo(r, 0); c.lineTo(s - r, 0); c.quadraticCurveTo(s, 0, s, r); c.lineTo(s, s - r); c.quadraticCurveTo(s, s, s - r, s); c.lineTo(r, s); c.quadraticCurveTo(0, s, 0, s - r); c.lineTo(0, r); c.quadraticCurveTo(0, 0, r, 0); c.closePath(); c.clip(); }
     var bg = c.createRadialGradient(s * 0.42, s * 0.34, 0, s * 0.42, s * 0.34, s * 0.95);
-    bg.addColorStop(0, "#111C31"); bg.addColorStop(1, "#04070D");
-    c.fillStyle = bg; c.fillRect(0, 0, s, s);
+    bg.addColorStop(0, "#111C31"); bg.addColorStop(1, "#04070D"); c.fillStyle = bg; c.fillRect(0, 0, s, s);
     c.strokeStyle = "rgba(37,212,238,.22)"; c.lineWidth = Math.max(1, s * 0.006);
     c.beginPath(); c.arc(s * 0.5, s * 0.5, s * 0.44, 0, Math.PI * 2); c.stroke();
     var k = mask ? 0.68 : 0.86;
@@ -61,7 +56,7 @@
     var b = D.getElementById("installb"); if (!b) return;
     b.addEventListener("click", function () {
       if (!deferred) return;
-      try { deferred.prompt(); deferred.userChoice.then(function (r) { deferred = null; installBtnState(); status(); }).catch(function () { deferred = null; installBtnState(); status(); }); } catch (e) { deferred = null; installBtnState(); status(); }
+      try { deferred.prompt(); deferred.userChoice.then(function () { deferred = null; installBtnState(); status(); }).catch(function () { deferred = null; installBtnState(); status(); }); } catch (e) { deferred = null; installBtnState(); status(); }
     });
   }
   function notifyUpdate(reg) {
@@ -82,54 +77,104 @@
       }).catch(function () { swReg = null; status(); });
     });
   }
-  function net() {
-    window.addEventListener("online", function () { status(); });
-    window.addEventListener("offline", function () { status(); });
-  }
+  function net() { window.addEventListener("online", status); window.addEventListener("offline", status); }
   function standalone() {
     try {
       installed = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
       if (window.matchMedia) { var mq = window.matchMedia("(display-mode: standalone)"); if (mq.addEventListener) mq.addEventListener("change", function (e) { installed = e.matches; installBtnState(); status(); }); }
     } catch (e) {}
   }
-  /* ── Case POIDS LOURDS injectée dans le menu tourisme ── */
-  function injectPL() {
-    if (document.getElementById("plnav")) return;
-    var svg = D.querySelector("svg[aria-hidden='true'] defs");
-    if (svg && !D.getElementById("i-truck")) {
-      var sym = D.createElementNS("http://www.w3.org/2000/svg", "symbol");
-      sym.setAttribute("id", "i-truck"); sym.setAttribute("viewBox", "0 0 24 24");
-      sym.innerHTML = "<path d='M1 6h12v10H1Z'/><path d='M13 9h5l3 3v4h-8Z'/><circle cx='6' cy='18' r='1.9'/><circle cx='17' cy='18' r='1.9'/><path d='M3 9h6'/></svg>";
-      svg.appendChild(sym);
-    }
+
+  /* ── Symboles supplémentaires (camion + moto) ── */
+  function addSymbol(id, inner) {
+    if (D.getElementById(id)) return;
+    var defs = D.querySelector("svg[aria-hidden='true'] defs"); if (!defs) return;
+    var sym = D.createElementNS("http://www.w3.org/2000/svg", "symbol");
+    sym.setAttribute("id", id); sym.setAttribute("viewBox", "0 0 24 24");
+    sym.innerHTML = inner; defs.appendChild(sym);
+  }
+
+  /* ── Overlay univers (PL / MOTOS) : la page tourisme reste vivante ── */
+  var UNI = null;
+  function openUniverse(url, title) {
+    closeUniverse();
+    UNI = D.createElement("div");
+    UNI.id = "mduni";
+    UNI.style.cssText = "position:fixed;inset:0;z-index:400;background:#04070D;";
+    var bar = D.createElement("div");
+    bar.style.cssText = "position:absolute;top:0;left:0;right:0;height:44px;z-index:2;display:flex;align-items:center;gap:10px;padding:0 10px;background:rgba(4,7,13,.96);border-bottom:1px solid rgba(255,106,0,.4);";
+    bar.innerHTML = "<button type='button' id='uniBack' style='display:inline-flex;align-items:center;gap:7px;font:600 11px system-ui;letter-spacing:.06em;color:#120B05;background:linear-gradient(135deg,#FFD9A8,#FF6A00 55%,#C2410C);padding:8px 12px;border:0;border-radius:9px;cursor:pointer'>← RETOUR TOURISME</button><span style='font:500 10px ui-monospace,monospace;color:#FF6A00'>" + title + " · UNIVERS SÉPARÉ</span>";
+    var fr = D.createElement("iframe");
+    fr.src = url;
+    fr.title = title;
+    fr.style.cssText = "position:absolute;top:44px;left:0;right:0;bottom:0;width:100%;height:calc(100% - 44px);border:0;background:#0B0703;";
+    UNI.appendChild(bar); UNI.appendChild(fr);
+    D.body.appendChild(UNI);
+    D.body.classList.add("lock");
+    bar.querySelector("#uniBack").addEventListener("click", closeUniverse);
+  }
+  function closeUniverse() {
+    if (!UNI) return;
+    if (UNI.parentNode) UNI.parentNode.removeChild(UNI);
+    UNI = null;
+    D.body.classList.remove("lock");
+  }
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (d && d.md === "uniback") closeUniverse();
+  });
+  D.addEventListener("keydown", function (ev) { if (ev.key === "Escape" && UNI) closeUniverse(); });
+
+  function universeLink(href, label) {
+    return { href: href, label: label };
+  }
+  function injectUniverses() {
+    addSymbol("i-truck", "<path d='M1 6h12v10H1Z'/><path d='M13 9h5l3 3v4h-8Z'/><circle cx='6' cy='18' r='1.9'/><circle cx='17' cy='18' r='1.9'/><path d='M3 9h6'/>");
+    addSymbol("i-moto", "<circle cx='5' cy='17' r='3.4'/><circle cx='19' cy='17' r='3.4'/><path d='M5 17l3-7h5l3 4h3'/><path d='M13 10l-2-3H8'/><path d='M16 14l2-4h2'/>");
+    var UNIS = [["pl.html", "Poids lourds", "i-truck", "#FF6A00", "PL"], ["moto.html", "Motos & Quads", "i-moto", "#A8E63C", "MOTO"]];
     var rail = D.getElementById("rail");
-    if (rail) {
-      var a = D.createElement("a");
-      a.className = "nv"; a.id = "plnav"; a.href = "pl.html";
-      a.innerHTML = "<svg class='ic' style='color:#FF6A00'><use href='#i-truck'/></svg><span>Poids lourds</span><em style='color:#FF6A00;border-color:rgba(255,106,0,.5)'>PL</em>";
+    if (rail && !D.getElementById("uninav")) {
+      var wrap = D.createElement("div"); wrap.id = "uninav";
+      UNIS.forEach(function (u, i) {
+        var a = D.createElement("a");
+        a.className = "nv"; a.href = u[0]; a.dataset.uni = u[0];
+        a.innerHTML = "<svg class='ic' style='color:" + u[3] + "'><use href='#" + u[2] + "'/></svg><span>" + u[1] + "</span><em style='color:" + u[3] + ";border-color:" + u[3] + "55'>" + u[4] + "</em>";
+        wrap.appendChild(a);
+      });
       var diag = rail.querySelector("[data-v='diagnostic']");
-      if (diag && diag.nextSibling) rail.insertBefore(a, diag.nextSibling); else rail.appendChild(a);
+      if (diag && diag.nextSibling) rail.insertBefore(wrap, diag.nextSibling); else rail.appendChild(wrap);
     }
     var tabs = D.getElementById("tabs");
-    if (tabs) {
-      var t = D.createElement("a");
-      t.href = "pl.html";
-      t.innerHTML = "<svg class='ic'><use href='#i-truck'/></svg>PL";
-      tabs.appendChild(t);
+    if (tabs && !tabs.querySelector("[data-uni]")) {
+      UNIS.forEach(function (u) {
+        var t = D.createElement("a"); t.href = u[0]; t.dataset.uni = u[0];
+        t.innerHTML = "<svg class='ic'><use href='#" + u[2] + "'/></svg>" + u[4];
+        tabs.appendChild(t);
+      });
     }
     var top = D.getElementById("top");
-    if (top) {
-      var b = D.createElement("a");
-      b.className = "tb"; b.href = "pl.html"; b.title = "Univers Poids Lourds"; b.setAttribute("aria-label", "Univers Poids Lourds");
-      b.innerHTML = "<svg class='ic' style='color:#FF6A00'><use href='#i-truck'/></svg>";
+    if (top && !top.querySelector("[data-uni]")) {
       var ref = D.getElementById("diagb");
-      if (ref) top.insertBefore(b, ref); else top.appendChild(b);
+      UNIS.slice().reverse().forEach(function (u) {
+        var b = D.createElement("a");
+        b.className = "tb"; b.href = u[0]; b.dataset.uni = u[0]; b.title = u[1]; b.setAttribute("aria-label", u[1]);
+        b.innerHTML = "<svg class='ic' style='color:" + u[3] + "'><use href='#" + u[2] + "'/></svg>";
+        if (ref) top.insertBefore(b, ref); else top.appendChild(b);
+      });
     }
+    D.addEventListener("click", function (ev) {
+      var el = ev.target.closest ? ev.target.closest("[data-uni]") : null;
+      if (!el) return;
+      var url = el.dataset.uni;
+      ev.preventDefault();
+      openUniverse(url, url === "pl.html" ? "POIDS LOURDS" : "MOTOS & QUADS");
+    });
   }
+
   window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferred = e; installBtnState(); status(); });
   window.addEventListener("appinstalled", function () { deferred = null; installed = true; installBtnState(); status(); });
-  window.MD_PWA = { icons: GEN, sizes: SIZES, generate: generate, status: status, isWeb: isWeb };
-  function boot() { standalone(); icons(); installBtn(); net(); sw(); status(); injectPL(); setTimeout(status, 1200); setTimeout(status, 3600); }
+  window.MD_PWA = { icons: GEN, sizes: SIZES, generate: generate, status: status, isWeb: isWeb, openUniverse: openUniverse, closeUniverse: closeUniverse };
+  function boot() { standalone(); icons(); installBtn(); net(); sw(); status(); injectUniverses(); setTimeout(status, 1200); setTimeout(status, 3600); }
   if (D.readyState === "loading") D.addEventListener("DOMContentLoaded", boot); else boot();
   window.__MD_SCRIPTS.pwa = true;
 })();
