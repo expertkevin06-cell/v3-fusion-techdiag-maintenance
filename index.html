@@ -4,11 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#04070D">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="Méga-base technique automobile 2017-2027 : marque/modèle/phase/motorisation, pannes connues, rappels, TSB, plans d'entretien jusqu'à 200 000 km.">
-<title>MECADATA // INGÉNIEUR EXPERT v9.2</title>
+<title>MECADATA // INGÉNIEUR EXPERT v9.4</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -281,7 +284,7 @@ input[type=checkbox]{accent-color:#FFD60A}
 
 <header id="top">
 <a class="logo" href="#/bord" aria-label="MECADATA — poste de bord"><svg viewBox="0 0 512 512" aria-hidden="true"><use href="#i-logo"/></svg><span><b>MECADATA <i>//</i> EXPERT</b><small>MÉGA-BASE 2017→2027</small></span></a>
-<span class="vch">v9.2</span>
+<span class="vch">v9.4</span>
 <div class="omni" role="search"><div class="box"><svg class="ic" style="color:#61748C" aria-hidden="true"><use href="#i-search"/></svg><input id="omni" type="search" placeholder="Marque, modèle, phase, code moteur, panne, rappel, TSB, code défaut…" autocomplete="off" spellcheck="false" aria-label="Recherche prédictive" aria-controls="omnires"><kbd>/</kbd></div><div id="omnires" role="listbox" aria-label="Résultats de recherche"></div></div>
 <button class="tb" id="msearch" data-act="msearch" type="button" aria-label="Recherche"><svg class="ic"><use href="#i-search"/></svg></button>
 <button class="chip ok" id="ichip" data-act="integrity" type="button" aria-label="Intégrité de la base"><span class="dot"></span><span id="itxt">INTÈGRE</span></button>
@@ -310,7 +313,7 @@ input[type=checkbox]{accent-color:#FFD60A}
 </div>
 </aside>
 <main id="view">
-<noscript><div id="noscript" class="card"><h2>JavaScript requis</h2><p>MECADATA est une console technique interactive. Activez JavaScript dans le navigateur ou la WebView Android (<code>setJavaScriptEnabled(true)</code>) puis rechargez.</p></div></noscript>
+<noscript><div id="noscript" class="card"><h2>JavaScript requis</h2><p>Activez JavaScript dans le navigateur ou la WebView Android (<code>setJavaScriptEnabled(true)</code>) puis rechargez.</p></div></noscript>
 <div id="fallback" class="card">
 <h2>Console en attente de moteur</h2>
 <p>Le moteur ne s'est pas initialisé. Vérifiez que ces fichiers sont présents <b>à côté de index.html</b>, avec exactement ces noms :</p>
@@ -326,7 +329,7 @@ input[type=checkbox]{accent-color:#FFD60A}
     icon.svg</pre>
 <p>Dans une WebView Android, activez <code>setJavaScriptEnabled(true)</code>, <code>setDomStorageEnabled(true)</code>, <code>setAllowFileAccess(true)</code> et chargez <code>file:///android_asset/mecadata/index.html</code>.</p>
 <div id="fbDetails" class="rep"></div>
-<div class="row"><button class="btn pri" type="button" onclick="location.reload()">RECHARGER</button><button class="btn ghost" type="button" onclick="var g=document.getElementById('gate');if(g)g.className='off';var b=document.getElementById('boot');if(b)b.className='off';">MASQUER LES OVERLAYS</button></div>
+<div class="row"><button class="btn pri" type="button" onclick="location.reload()">RECHARGER</button><button class="btn ghost" type="button" onclick="try{caches.keys().then(function(k){k.forEach(function(x){caches.delete(x)})});}catch(e){}try{navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.unregister()})});}catch(e){}location.reload()">VIDER CACHE PWA + RECHARGER</button></div>
 </div>
 </main>
 </div>
@@ -360,15 +363,15 @@ window.__MD_FAIL=function(){
   ["data","app","pwa"].forEach(function(k){h+="<li class='"+(window.__MD_SCRIPTS[k]?"ok":"rj")+"'>"+k+".js : "+(window.__MD_SCRIPTS[k]?"chargé":"ABSENT ou non compilé")+"</li>"});
   h+="<li class='"+(window.MD_RAW?"ok":"rj")+"'>MD_RAW : "+(window.MD_RAW?"présent":"absent")+"</li></ul>";
   if(window.__MD_ERR.length){h+="<b>Erreurs capturées :</b><ul>";window.__MD_ERR.slice(0,8).forEach(function(e){h+="<li class='rj'>"+String(e.msg).replace(/[<>]/g,"")+(e.src?" — "+String(e.src).split("/").pop():"")+" @"+e.line+":"+e.col+"</li>"});h+="</ul>"}
-  else{h+="<p class='wn'>Aucune exception capturée : un fichier est probablement absent du dossier js/ ou tronqué.</p>"}
+  else{h+="<p class='wn'>Aucune exception : un fichier est absent ou tronqué, ou un cache ancien est servi.</p>"}
   d.innerHTML=h;
 };
 setTimeout(function(){if(!window.__MD_READY)window.__MD_FAIL()},4000);
 setTimeout(function(){if(!window.__MD_READY)window.__MD_FAIL()},9000);
 document.addEventListener("click",function(e){var b=e.target;while(b&&b!==document.body){if(b.id==="boot"){window.__MD_LIFT();return}b=b.parentNode}},false);
 </script>
-<script src="js/data.js" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/data.js',src:'data.js',line:0,col:0})"></script>
-<script src="js/app.js" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/app.js',src:'app.js',line:0,col:0})"></script>
-<script src="js/pwa.js" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/pwa.js',src:'pwa.js',line:0,col:0})"></script>
+<script src="js/data.js?v=16" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/data.js',src:'data.js',line:0,col:0})"></script>
+<script src="js/app.js?v=16" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/app.js',src:'app.js',line:0,col:0})"></script>
+<script src="js/pwa.js?v=16" onerror="window.__MD_ERR.push({msg:'Chargement impossible : js/pwa.js',src:'pwa.js',line:0,col:0})"></script>
 </body>
 </html>
