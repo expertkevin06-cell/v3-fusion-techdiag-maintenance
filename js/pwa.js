@@ -1,11 +1,15 @@
-/* MECADATA pwa v23 — chargeur ordonné des modules de corrélation :
-   js/families.js → js/perf.js → js/faults.js → js/audit.js → js/techfilter.js
-   SW network-first, icônes en idle, univers PL / MOTOS & QUADS en overlay. */
+/* MECADATA pwa v24 — ouverture la plus rapide possible.
+   • preload des 5 modules quand l'app est servie en http(s) ;
+   • families → perf puis faults/audit/tech en parallèle ;
+   • splash fermé dès window.__MD_READY (poll 60 ms) sans attendre le timer ;
+   • icônes à 3 s, service worker en idle 2,5 s (hors chemin critique) ;
+   • univers PL / MOTOS & QUADS en overlay, retour sans rechargement. */
 (function () {
   "use strict";
   var D = document;
   var BOLT = [[0.615, 0.055], [0.270, 0.545], [0.470, 0.545], [0.385, 0.945], [0.745, 0.415], [0.535, 0.415], [0.690, 0.055]];
   var SIZES = [["favicon-16.png", 16, false], ["favicon-32.png", 32, false], ["apple-touch-icon.png", 180, true], ["icon-192.png", 192, false], ["icon-512.png", 512, false], ["icon-maskable-192.png", 192, true], ["icon-maskable-512.png", 512, true]];
+  var MODULES = ["js/families.js?v=24", "js/perf.js?v=24", "js/faults.js?v=24", "js/audit.js?v=24", "js/techfilter.js?v=24"];
   var isWeb = /^https?:$/.test(location.protocol);
   var GEN = {}, deferred = null, installed = false, swReg = null;
   function idle(f, ms) {
@@ -14,6 +18,16 @@
   }
   function note(m, src) {
     try { window.__MD_ERR.push({ msg: m, src: src, line: 0, col: 0 }); } catch (e) {}
+  }
+  function preload() {
+    if (!isWeb) { return; }
+    MODULES.forEach(function (src) {
+      var l = D.createElement("link");
+      l.rel = "preload";
+      l.as = "script";
+      l.href = src;
+      D.head.appendChild(l);
+    });
   }
   function loadScript(id, src, then) {
     if (D.getElementById(id)) { if (then) { then(); } return; }
@@ -29,15 +43,25 @@
     D.body.appendChild(s);
   }
   function loadModules() {
-    loadScript("mdfam", "js/families.js?v=23", function () {
-      loadScript("mdperf", "js/perf.js?v=23", function () {
-        loadScript("mdmega", "js/faults.js?v=23", function () {
-          loadScript("mdaudit", "js/audit.js?v=23", function () {
-            loadScript("mdtech", "js/techfilter.js?v=23", null);
-          });
-        });
+    loadScript("mdfam", MODULES[0], function () {
+      loadScript("mdperf", MODULES[1], function () {
+        loadScript("mdmega", MODULES[2], null);
+        loadScript("mdaudit", MODULES[3], null);
+        loadScript("mdtech", MODULES[4], null);
       });
     });
+  }
+  function liftWhenReady() {
+    var n = 0;
+    var iv = setInterval(function () {
+      n++;
+      if (window.__MD_READY) {
+        clearInterval(iv);
+        try { window.__MD_LIFT(); } catch (e) {}
+      } else if (n > 100) {
+        clearInterval(iv);
+      }
+    }, 60);
   }
   function draw(c, s, mask) {
     c.clearRect(0, 0, s, s);
@@ -189,33 +213,31 @@
   }
   function sw() {
     if (!isWeb || !("serviceWorker" in navigator)) { status(); return; }
-    window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js?v=23", { scope: "./" }).then(function (reg) {
-        swReg = reg;
-        status();
-        try { reg.update(); } catch (e) {}
-        if (reg.waiting) {
-          var already = false;
-          try { already = sessionStorage.getItem("md_sw_reload") === "1"; } catch (e) {}
-          if (!already) { activateWaiting(reg, true); } else { notifyUpdate(reg); }
-        }
-        reg.addEventListener("updatefound", function () {
-          var nw = reg.installing;
-          if (!nw) { return; }
-          nw.addEventListener("statechange", function () {
-            if (nw.state === "installed" && navigator.serviceWorker.controller) { activateWaiting(reg, true); }
-          });
+    navigator.serviceWorker.register("sw.js?v=24", { scope: "./" }).then(function (reg) {
+      swReg = reg;
+      status();
+      try { reg.update(); } catch (e) {}
+      if (reg.waiting) {
+        var already = false;
+        try { already = sessionStorage.getItem("md_sw_reload") === "1"; } catch (e) {}
+        if (!already) { activateWaiting(reg, true); } else { notifyUpdate(reg); }
+      }
+      reg.addEventListener("updatefound", function () {
+        var nw = reg.installing;
+        if (!nw) { return; }
+        nw.addEventListener("statechange", function () {
+          if (nw.state === "installed" && navigator.serviceWorker.controller) { activateWaiting(reg, true); }
         });
-      }).catch(function () { swReg = null; status(); });
-      navigator.serviceWorker.addEventListener("controllerchange", function () {
-        var once = false;
-        try {
-          once = sessionStorage.getItem("md_sw_reload") === "1";
-          sessionStorage.removeItem("md_sw_reload");
-        } catch (e) {}
-        if (once) { location.reload(); }
-        status();
       });
+    }).catch(function () { swReg = null; status(); });
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      var once = false;
+      try {
+        once = sessionStorage.getItem("md_sw_reload") === "1";
+        sessionStorage.removeItem("md_sw_reload");
+      } catch (e) {}
+      if (once) { location.reload(); }
+      status();
     });
   }
   function net() {
@@ -347,9 +369,11 @@
     net();
     status();
     injectUniverses();
+    preload();
     loadModules();
-    idle(icons, 2200);
-    idle(sw, 1800);
+    liftWhenReady();
+    idle(icons, 3000);
+    idle(sw, 2500);
     setTimeout(status, 2000);
   }
   if (D.readyState === "loading") { D.addEventListener("DOMContentLoaded", boot); } else { boot(); }
