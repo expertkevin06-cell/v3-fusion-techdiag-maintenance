@@ -1,7 +1,5 @@
-/* MECADATA pwa v21 — chargeur de modules ordonné pour la latence.
-   js/perf.js (accélération globale) → js/faults.js (méga-pannes)
-   → js/audit.js (corrélation réelle). SW network-first, icônes en idle,
-   univers PL / MOTOS & QUADS en overlay sans rechargement. */
+/* MECADATA pwa v22 — chargeur ordonné : perf → faults → audit → techfilter.
+   SW network-first, icônes en idle, univers PL / MOTOS & QUADS en overlay. */
 (function () {
   "use strict";
   var D = document;
@@ -30,9 +28,11 @@
     D.body.appendChild(s);
   }
   function loadModules() {
-    loadScript("mdperf", "js/perf.js?v=21", function () {
-      loadScript("mdmega", "js/faults.js?v=21", function () {
-        loadScript("mdaudit", "js/audit.js?v=21", null);
+    loadScript("mdperf", "js/perf.js?v=22", function () {
+      loadScript("mdmega", "js/faults.js?v=22", function () {
+        loadScript("mdaudit", "js/audit.js?v=22", function () {
+          loadScript("mdtech", "js/techfilter.js?v=22", null);
+        });
       });
     });
   }
@@ -187,7 +187,7 @@
   function sw() {
     if (!isWeb || !("serviceWorker" in navigator)) { status(); return; }
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js?v=21", { scope: "./" }).then(function (reg) {
+      navigator.serviceWorker.register("sw.js?v=22", { scope: "./" }).then(function (reg) {
         swReg = reg;
         status();
         try { reg.update(); } catch (e) {}
