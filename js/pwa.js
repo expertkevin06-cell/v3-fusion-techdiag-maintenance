@@ -1,7 +1,7 @@
-/* MECADATA pwa v20 — chargeur de modules + PWA + univers séparés.
-   Chaîne : js/faults.js (méga-base pannes) → js/audit.js (corrélation réelle
-   motorisations/puissances/modèles + années de production + correction).
-   SW network-first, mise à jour forcée, icônes différées, overlay PL/MOTO. */
+/* MECADATA pwa v21 — chargeur de modules ordonné pour la latence.
+   js/perf.js (accélération globale) → js/faults.js (méga-pannes)
+   → js/audit.js (corrélation réelle). SW network-first, icônes en idle,
+   univers PL / MOTOS & QUADS en overlay sans rechargement. */
 (function () {
   "use strict";
   var D = document;
@@ -10,8 +10,8 @@
   var isWeb = /^https?:$/.test(location.protocol);
   var GEN = {}, deferred = null, installed = false, swReg = null;
   function idle(f, ms) {
-    if (window.requestIdleCallback) { requestIdleCallback(function () { f(); }, { timeout: ms || 2000 }); }
-    else { setTimeout(f, ms || 400); }
+    if (window.requestIdleCallback) { requestIdleCallback(function () { f(); }, { timeout: ms || 2500 }); }
+    else { setTimeout(f, ms || 600); }
   }
   function note(m, src) {
     try { window.__MD_ERR.push({ msg: m, src: src, line: 0, col: 0 }); } catch (e) {}
@@ -30,8 +30,10 @@
     D.body.appendChild(s);
   }
   function loadModules() {
-    loadScript("mdmega", "js/faults.js?v=20", function () {
-      loadScript("mdaudit", "js/audit.js?v=20", null);
+    loadScript("mdperf", "js/perf.js?v=21", function () {
+      loadScript("mdmega", "js/faults.js?v=21", function () {
+        loadScript("mdaudit", "js/audit.js?v=21", null);
+      });
     });
   }
   function draw(c, s, mask) {
@@ -185,7 +187,7 @@
   function sw() {
     if (!isWeb || !("serviceWorker" in navigator)) { status(); return; }
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js?v=20", { scope: "./" }).then(function (reg) {
+      navigator.serviceWorker.register("sw.js?v=21", { scope: "./" }).then(function (reg) {
         swReg = reg;
         status();
         try { reg.update(); } catch (e) {}
@@ -340,12 +342,12 @@
     standalone();
     installBtn();
     net();
-    sw();
     status();
     injectUniverses();
     loadModules();
-    idle(icons, 1200);
-    setTimeout(status, 1500);
+    idle(icons, 2200);
+    idle(sw, 1800);
+    setTimeout(status, 2000);
   }
   if (D.readyState === "loading") { D.addEventListener("DOMContentLoaded", boot); } else { boot(); }
   window.__MD_SCRIPTS.pwa = true;
