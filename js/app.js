@@ -1,14 +1,14 @@
-/* MECADATA v18 — noyau (partie 1/2).
-   CORRECTIFS MASSIFS :
-   • index moteurs/modèles rafraîchi en direct → plus aucun modèle orphelin ;
-   • tout plan d'entretien atteint TOUJOURS 200 000 km (palier final forcé) ;
-   • moteur de RÉPARATION : réattache les motorisations manquantes, complète
-     à ≥2 puissances par modèle, comble pannes/bulletins, sauvegarde en admin ;
-   • touche « réparation » (clé verte) injectée dans la barre du haut.
-   Chargé avant js/app-ui.js (partie 2, inchangée). */
+/* MECADATA v24 — noyau (partie 1/2) optimisé ouverture.
+   • Le portail s'affiche dès que la base est construite ; fond animé,
+     autovérification et balayage auto passent en tâche de fond (idle).
+   • recompute() de démarrage en O(n) : plus de corrélation pannes×moteurs
+     au boot (le module perf.js la recalcule exactement, en index O(1)).
+   • saveNow() réutilise la sérialisation si rien n'a changé (plus de
+     JSON.stringify de plusieurs Mo à chaque sauvegarde).
+   • Toutes les fonctionnalités conservées : portail 1 case tiers, plans
+     200 000 km, imports/exports admin, méga-base, recherche auto, backup. */
 "use strict";
 
-/* ---------- utilitaires ---------- */
 var D = document;
 function $(s, r) { return (r || D).querySelector(s); }
 function $$(s, r) { return [].slice.call((r || D).querySelectorAll(s)); }
@@ -99,8 +99,12 @@ window.addEventListener("unhandledrejection", function (e) { logErr("promise", e
 function safe(w, f, fb) {
   try { return f(); } catch (e) { logErr(w, e); return fb; }
 }
+var BOOT = { t0: (window.performance && performance.now) ? performance.now() : Date.now(), marks: {} };
+window.MD_BOOT = BOOT;
+function mark(name) {
+  BOOT.marks[name] = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - BOOT.t0);
+}
 
-/* ---------- stockage ---------- */
 var MEM = {};
 var STORE = {
   local: false,
@@ -149,7 +153,6 @@ function download(n, c) {
   }, null);
 }
 
-/* ---------- son, toasts, modales ---------- */
 var PREF = { sound: true };
 var AUC = { ctx: null };
 function beep(k) {
@@ -239,16 +242,15 @@ function confirmModal(t, m, a, l) {
   openModal(h, "slim");
 }
 
-/* ---------- constantes ---------- */
 var PWD = "Kevin83600";
 var TPWD = "expert83";
-var KEY = "mecadata_v18";
-var AKEY = "md_access_v18";
-var PKEY = "md_pub_v18";
-var AKEY2 = "md_auto_v18";
+var KEY = "mecadata_v24";
+var AKEY = "md_access_v24";
+var PKEY = "md_pub_v24";
+var AKEY2 = "md_auto_v24";
 var YMAX = 2027;
 var KMMAX = 200000;
-var LEGACY = ["mecadata_v72", "mecadata_v8", "mecadata_v9", "mecadata_v10", "mecadata_v11", "mecadata_v12", "mecadata_v15", "mecadata_v17", "md_access_v8", "md_access_v9", "md_access_v10", "md_access_v11", "md_access_v12", "md_access_v15", "md_access_v17", "md_pub_v9", "md_pub_v10", "md_pub_v11", "md_pub_v12", "md_pub_v15", "md_pub_v17", "md_auto_v11", "md_auto_v12", "md_auto_v15", "md_auto_v17", "md_adm", "md_boot"];
+var LEGACY = ["mecadata_v72", "mecadata_v8", "mecadata_v9", "mecadata_v10", "mecadata_v11", "mecadata_v12", "mecadata_v15", "mecadata_v17", "mecadata_v18", "md_access_v8", "md_access_v9", "md_access_v10", "md_access_v11", "md_access_v12", "md_access_v15", "md_access_v17", "md_access_v18", "md_pub_v9", "md_pub_v10", "md_pub_v11", "md_pub_v12", "md_pub_v15", "md_pub_v17", "md_pub_v18", "md_auto_v11", "md_auto_v12", "md_auto_v15", "md_auto_v17", "md_auto_v18", "md_adm", "md_boot"];
 var PURGED = { local: 0, session: 0, caches: 0, sw: 0, done: false };
 function purgeCache(full) {
   var n = 0;
@@ -354,7 +356,6 @@ var SVC_FB = {
   fluids: ["DOT4", "G12", "120", "2.4", "2.4", "R1234yf", "AGM 70Ah"]
 };
 
-/* ---------- studio fonds dynamiques ---------- */
 var WP = {
   P: { mode: "nebula", theme: "diag", useCustom: false, custom: { bg: "#04070D", a: "#FFD60A", b: "#25D4EE", c: "#E45CFF", d: "#43E08B" }, density: 64, count: 150, speed: 100, turb: 38, scale: 66, glow: 60, blur: 0, stroke: 1.4, drift: 40, dir: 1, quality: "std", grid: true, run: true, bg: true },
   TH: {
@@ -389,7 +390,7 @@ var WP = {
     }
     this.resize();
     var s = this;
-    window.addEventListener("resize", deb(function () { s.resize(); }, 150));
+    window.addEventListener("resize", deb(function () { s.resize(); }, 200));
     D.addEventListener("visibilitychange", function () {
       if (D.hidden) { s.stop(); } else if (s.P.run) { s.start(); }
     });
@@ -591,12 +592,12 @@ var WP = {
         }
       }
       for (i = 0; i < pts.length; i++) {
-        var q = pts[i];
-        glow(cols[q.k]);
-        c.fillStyle = cols[q.k];
+        var q2 = pts[i];
+        glow(cols[q2.k]);
+        c.fillStyle = cols[q2.k];
         c.globalAlpha = 0.7 * I + 0.15;
         c.beginPath();
-        c.arc(q.x, q.y, q.r, 0, 6.283);
+        c.arc(q2.x, q2.y, q2.r, 0, 6.283);
         c.fill();
         c.globalAlpha = 1;
         ng();
@@ -724,7 +725,6 @@ var WP = {
   }
 };
 
-/* ---------- état ---------- */
 var SEED = null;
 var DB = { brands: [], models: [], engines: [], faults: [], tsb: [] };
 var AUDIT = [];
@@ -757,7 +757,6 @@ window.MD_STATE = S;
 function isAdmin() { return MODE === "admin"; }
 function isTier() { return MODE === "tier"; }
 
-/* ---------- registre accès ---------- */
 function regLoad() {
   var r = safe("reg", function () { return JSON.parse(STORE.get(AKEY)); }, null);
   if (!r || !Array.isArray(r.users)) { r = { users: [], live: false, rev: 0, log: [] }; }
@@ -800,13 +799,12 @@ function applyTier() {
 }
 function invalidate() { FC = {}; TC = {}; IVIC = {}; }
 
-/* ---------- construction & normalisation ---------- */
 function mkEng(n, mid, code, fam, label, fuel, disp, hp, nm, y0, y1, gb) {
   fuel = nfuel(fuel);
   var a = num(y0, 2017), b = num(y1, 2027);
   if (a > b) { var t = a; a = b; b = t; }
   hp = clamp(num(hp, 100), 1, 3000);
-  var e = {
+  return {
     id: "E" + String(n).padStart(4, "0") + uid("").slice(0, 2),
     m: [mid], code: str(code, "GEN"), fam: str(fam, str(code, "GEN")),
     label: str(label, "Motorisation"), fuel: fuel, disp: num(disp, 0),
@@ -817,27 +815,6 @@ function mkEng(n, mid, code, fam, label, fuel, disp, hp, nm, y0, y1, gb) {
     asp: fuel === "b" ? "—" : "Turbo",
     inj: fuel === "b" ? "—" : (fuel === "d" ? "Common Rail" : "Injection directe")
   };
-  return e;
-}
-function modelById(mid) {
-  var f = null;
-  arr(DB.models).forEach(function (m) { if (m && m.id === mid) { f = m; } });
-  return f;
-}
-function engineExists(mid, fam, hp) {
-  return arr(DB.engines).some(function (e) {
-    return arr(e.m).indexOf(mid) > -1 && e.fam === fam && e.hp === hp;
-  });
-}
-function pushEngine(mid, src, hp, nm) {
-  if (!modelById(mid) || !src) { return null; }
-  hp = clamp(num(hp, src.hp), 1, 3000);
-  if (engineExists(mid, src.fam, hp)) { return null; }
-  var e = mkEng(arr(DB.engines).length + 1, mid, src.code, src.fam, String(src.label).replace(/\s\d+(\s*\(\d{4}-\d{4}\))?$/, "") + " " + hp, src.fuel, src.disp, hp, num(nm, src.nm), src.y[0], src.y[1], src.gb);
-  DB.engines.push(e);
-  EIDX[e.id] = e;
-  FC = {}; TC = {}; IVIC = {};
-  return e;
 }
 function build(R) {
   var O = { brands: [], models: [], engines: [], faults: [], tsb: [] };
@@ -1085,41 +1062,62 @@ function integrity() {
   });
   return { err: err, ok: !err.length, pct: err.length ? Math.max(0, 100 - err.length * 7) : 100 };
 }
-function countByModel() {
-  var pm = {};
-  arr(DB.engines).forEach(function (e) {
-    arr(e.m).forEach(function (mid) { pm[mid] = (pm[mid] || 0) + 1; });
-  });
-  return pm;
-}
+/* recompute LÉGER au démarrage : aucune corrélation pannes×moteurs ici.
+   Le module perf.js remplace cette fonction par une version indexée exacte. */
 function recompute() {
   invalidate();
   reindex();
-  var links = 0, corr = 0, bb = {}, doms = {}, fams = {}, regs = {};
-  var pm = countByModel();
-  arr(DB.engines).forEach(function (e) {
-    var m = MIDX[arr(e.m)[0]];
+  var d = DB;
+  var links = 0, corr = 0, bb = {}, doms = {}, fams = {}, regs = {}, pm = {};
+  var famCount = {}, modCount = {}, brCount = {};
+  var es = arr(d.engines), i;
+  for (i = 0; i < es.length; i++) {
+    var e = es[i];
+    if (!e) { continue; }
     fams[e.fam] = 1;
-    links += arr(e.m).length;
-    if (m) { bb[m.b] = (bb[m.b] || 0) + 1; }
-    corr += faultsFor(e).length + tsbFor(e).length;
+    famCount[e.fam] = (famCount[e.fam] || 0) + 1;
+    var ms = arr(e.m);
+    links += ms.length;
+    var m = MIDX[ms[0]];
+    if (m) {
+      bb[m.b] = (bb[m.b] || 0) + 1;
+      brCount[m.b] = (brCount[m.b] || 0) + 1;
+      pm[m.id] = (pm[m.id] || 0) + 1;
+      modCount[m.id] = (modCount[m.id] || 0) + 1;
+    }
+  }
+  arr(d.brands).forEach(function (b) { if (b) { regs[b.region] = (regs[b.region] || 0) + 1; } });
+  arr(d.faults).forEach(function (f) {
+    if (!f) { return; }
+    links += arr(f.fam).length;
+    doms[f.dom] = 1;
+    var c = 0;
+    arr(f.fam).forEach(function (fm) { c = Math.max(c, famCount[fm] || 0); });
+    corr += c;
   });
-  arr(DB.brands).forEach(function (b) { regs[b.region] = (regs[b.region] || 0) + 1; });
-  arr(DB.faults).forEach(function (f) { links += arr(f.fam).length; doms[f.dom] = 1; });
-  arr(DB.tsb).forEach(function (t) { links += arr(t.b).length + arr(t.fam).length; doms[t.dom] = 1; });
-  var w = 0, tot = arr(DB.models).length;
+  arr(d.tsb).forEach(function (t) {
+    if (!t) { return; }
+    links += arr(t.b).length + arr(t.fam).length;
+    doms[t.dom] = 1;
+    var c2 = 0;
+    arr(t.fam).forEach(function (fm) { c2 = Math.max(c2, famCount[fm] || 0); });
+    arr(t.b).forEach(function (b) { c2 = Math.max(c2, brCount[b] || 0); });
+    corr += c2;
+  });
+  var w = 0, tot = arr(d.models).length;
   Object.keys(pm).forEach(function (k) { if (pm[k] >= 2) { w++; } });
+  var sizeEst = Math.round((es.length * 220 + arr(d.faults).length * 420 + arr(d.tsb).length * 320 + arr(d.models).length * 160 + arr(d.brands).length * 120) / 1024);
   META = {
-    counts: { b: arr(DB.brands).length, m: tot, e: arr(DB.engines).length, f: arr(DB.faults).length, t: arr(DB.tsb).length, rc: arr(DB.tsb).filter(isRecall).length, fam: Object.keys(fams).length, dom: Object.keys(doms).length },
-    links: links, corr: corr, integ: integrity(),
-    size: Math.round(JSON.stringify(DB).length / 1024),
+    counts: { b: arr(d.brands).length, m: tot, e: es.length, f: arr(d.faults).length, t: arr(d.tsb).length, rc: arr(d.tsb).filter(isRecall).length, fam: Object.keys(fams).length, dom: Object.keys(doms).length },
+    links: links, corr: corr,
+    integ: integrity(),
+    size: sizeEst,
     byBrand: bb, regions: regs,
     cover: tot ? Math.round(w / tot * 100) : 0,
     perModel: pm
   };
 }
 
-/* ---------- plans entretien : 200 000 km GARANTIS ---------- */
 function svcList() {
   var l = arr(RAW.svc).filter(function (s) { return s && num(s.base, 0) > 0 && arr(s.items).length; });
   return l.length ? l : [SVC_FB];
@@ -1184,12 +1182,7 @@ function buildPlan(e, m, b) {
   visits.sort(function (a, b2) { return num(a.km, 0) - num(b2.km, 0); });
   var last = visits.length ? num(visits[visits.length - 1].km, 0) : 0;
   if (last < KMMAX) {
-    visits.push({
-      km: KMMAX,
-      mo: Math.round(KMMAX / annual * 12),
-      ops: ["Révision 200 000 km — contrôle général moteur, transmission, freins, trains"],
-      ctrl: ctrl.slice()
-    });
+    visits.push({ km: KMMAX, mo: Math.round(KMMAX / annual * 12), ops: ["Révision 200 000 km — contrôle général moteur, transmission, freins, trains"], ctrl: ctrl.slice() });
   }
   if (!visits.length) {
     visits.push({ km: KMMAX, mo: 120, ops: ["Révision générale 200 000 km"], ctrl: ctrl.slice() });
@@ -1202,11 +1195,22 @@ function lastKm(pl) {
   return l ? num(l.km, 0) : 0;
 }
 
-/* ---------- sauvegarde locale admin + backup ---------- */
+var SAVE_CACHE = { stamp: "", json: "" };
+function saveStamp() {
+  var c = META.counts;
+  return [c.b, c.m, c.e, c.f, c.t, FIXES, AUDIT.length, DIRTY ? 1 : 0].join(":");
+}
 function saveNow(quiet) {
   if (!isAdmin()) { return false; }
   return safe("save", function () {
-    STORE.set(KEY, JSON.stringify({ v: 18, db: DB, audit: AUDIT.slice(-60), prefs: PREF, wp: WP.P, ts: Date.now() }));
+    var st = saveStamp();
+    var json = SAVE_CACHE.json;
+    if (SAVE_CACHE.stamp !== st || !json) {
+      json = JSON.stringify({ v: 24, db: DB, audit: AUDIT.slice(-60), prefs: PREF, wp: WP.P, ts: Date.now() });
+      SAVE_CACHE.stamp = st;
+      SAVE_CACHE.json = json;
+    }
+    STORE.set(KEY, json);
     LASTSAVE = Date.now();
     DIRTY = false;
     if (typeof updStor === "function") { updStor(); }
@@ -1217,11 +1221,13 @@ function saveNow(quiet) {
 }
 var save = deb(function () { saveNow(true); }, 350);
 function markDirty() {
+  SAVE_CACHE.stamp = "";
   if (isAdmin()) { DIRTY = true; save(); }
 }
 function backupExport() {
   if (!isAdmin()) { toast("err", "Réservé admin"); return; }
-  download("mecadata_sauvegarde_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ kind: "mecadata-backup", v: 18, ts: Date.now(), db: DB, prefs: PREF, wp: WP.P, auto: AUTO.st, audit: AUDIT.slice(-60) }, null, 2));
+  SAVE_CACHE.stamp = "";
+  download("mecadata_sauvegarde_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ kind: "mecadata-backup", v: 24, ts: Date.now(), db: DB, prefs: PREF, wp: WP.P, auto: AUTO.st, audit: AUDIT.slice(-60) }, null, 2));
   toast("ok", "Backup exporté", "Fichier JSON de sauvegarde locale.");
   beep("ok");
 }
@@ -1232,9 +1238,10 @@ function backupRestore(obj) {
   DB = obj.db;
   FIXES += normalize(DB);
   recompute();
-  repairAll(false);
+  if (typeof W.repairAll === "function") { safe("repair", function () { W.repairAll(false); }, null); }
   if (obj.prefs) { Object.keys(obj.prefs).forEach(function (k) { PREF[k] = obj.prefs[k]; }); }
   if (obj.wp) { Object.keys(obj.wp).forEach(function (k) { WP.P[k] = obj.wp[k]; }); }
+  SAVE_CACHE.stamp = "";
   saveNow(true);
   audit("bak", "Restauration backup");
   if (typeof updateMeta === "function") { updateMeta(); }
@@ -1277,7 +1284,6 @@ function mutate(t, m) {
   if (typeof render === "function") { render(); }
 }
 
-/* ---------- recherche auto massive ---------- */
 var AUTO = {
   st: { last: 0, lastFull: 0, onLaunch: true, runs: 0, added: { m: 0, e: 0, f: 0, t: 0 }, log: [] },
   SEEDS: [
@@ -1322,9 +1328,16 @@ var AUTO = {
     return m;
   },
   addEngine: function (mid, src, hp, nm) {
-    var e = pushEngine(mid, src, hp, nm);
-    if (e) { this.st.added.e++; }
-    return e;
+    if (!MIDX[mid] || !src) { return null; }
+    var dup = arr(DB.engines).some(function (e) {
+      return arr(e.m).indexOf(mid) > -1 && e.fam === src.fam && e.hp === hp;
+    });
+    if (dup) { return null; }
+    var e2 = mkEng(arr(DB.engines).length + 1, mid, src.code, src.fam, String(src.label).replace(/\s\d+$/, "") + " " + hp, src.fuel, src.disp, hp, nm, src.y[0], src.y[1], src.gb);
+    DB.engines.push(e2);
+    EIDX[e2.id] = e2;
+    this.st.added.e++;
+    return e2;
   },
   addFault: function (t, fams, mts, sev, dom, cause, fix) {
     var dup = arr(DB.faults).some(function (f) { return nk(f.t) === nk(t); });
@@ -1406,20 +1419,9 @@ var AUTO = {
           var m2 = AUTO.addModel(m.b, nm2, m.phase + 1, y0, YMAX, SEGS.indexOf(m.seg));
           if (m2) {
             add++;
-            var parentEngines = arr(DB.engines).filter(function (e) { return arr(e.m).indexOf(m.id) > -1; });
-            parentEngines.slice(0, 3).forEach(function (e) {
+            arr(DB.engines).filter(function (e) { return arr(e.m).indexOf(m.id) > -1; }).slice(0, 3).forEach(function (e) {
               AUTO.addEngine(m2.id, e, e.hp, e.nm);
             });
-            if (!arr(DB.engines).some(function (e) { return arr(e.m).indexOf(m2.id) > -1; })) {
-              var donor = arr(DB.engines).filter(function (e) {
-                var mm = modelOf(e);
-                return mm && mm.b === m.b;
-              })[0];
-              if (donor) {
-                AUTO.addEngine(m2.id, donor, donor.hp, donor.nm);
-                AUTO.addEngine(m2.id, donor, Math.round(donor.hp * 1.15 / 5) * 5, Math.round(donor.nm * 1.1));
-              }
-            }
           }
         }
       }
@@ -1476,7 +1478,7 @@ var AUTO = {
     var total = a1 + a2 + a3 + a4;
     FIXES += normalize(DB);
     recompute();
-    repairAll(false);
+    if (typeof W.repairAll === "function") { safe("repair", function () { W.repairAll(false); }, null); }
     this.st.runs++;
     this.st.last = Date.now();
     if (full) { this.st.lastFull = Date.now(); }
@@ -1490,13 +1492,13 @@ var AUTO = {
   },
   maybe: function () {
     this.load();
-    var now = Date.now();
-    if (now - num(this.st.lastFull, 0) > 30 * 86400000) {
+    var nowT = Date.now();
+    if (nowT - num(this.st.lastFull, 0) > 30 * 86400000) {
       var r = this.sweep("cycle 30 jours", true);
       if (r.total) { toast("ok", "Mise à jour auto 30 j", r.total + " complément(s)."); }
       return r;
     }
-    if (this.st.onLaunch && now - num(this.st.last, 0) > 6 * 3600000) {
+    if (this.st.onLaunch && nowT - num(this.st.last, 0) > 6 * 3600000) {
       var r2 = this.sweep("lancement", false);
       if (r2.total) { toast("info", "Recherche auto massive", r2.total + " complément(s)."); }
       return r2;
@@ -1505,10 +1507,8 @@ var AUTO = {
   }
 };
 
-/* ---------- RÉPARATION MASSIVE ---------- */
 function repairAll(verbose) {
   reindex();
-  var before = countByModel();
   var attached = 0, completed = 0;
   var donors = {};
   arr(DB.engines).forEach(function (e) {
@@ -1517,11 +1517,12 @@ function repairAll(verbose) {
     if (!donors[m.b]) { donors[m.b] = []; }
     donors[m.b].push(e);
   });
+  var per = {};
+  arr(DB.engines).forEach(function (e) {
+    arr(e.m).forEach(function (mid) { per[mid] = (per[mid] || 0) + 1; });
+  });
   arr(DB.models).forEach(function (m) {
-    var cnt = 0;
-    arr(DB.engines).forEach(function (e) {
-      if (arr(e.m).indexOf(m.id) > -1) { cnt++; }
-    });
+    var cnt = per[m.id] || 0;
     if (cnt >= 2) { return; }
     var pool = (donors[m.b] || []).filter(function (e) {
       var mm = modelOf(e);
@@ -1531,8 +1532,7 @@ function repairAll(verbose) {
     if (!pool.length) {
       var g1 = mkEng(arr(DB.engines).length + 1, m.id, "GEN", "GEN", "Motorisation standard 110", "e", 1598, 110, 250, m.y[0], m.y[1], "BVM6");
       var g2 = mkEng(arr(DB.engines).length + 2, m.id, "GEN", "GEN", "Motorisation standard 150", "e", 1598, 150, 300, m.y[0], m.y[1], "BVA8");
-      DB.engines.push(g1);
-      DB.engines.push(g2);
+      DB.engines.push(g1, g2);
       EIDX[g1.id] = g1;
       EIDX[g2.id] = g2;
       attached += 2;
@@ -1540,25 +1540,29 @@ function repairAll(verbose) {
     }
     var src = pool[0];
     if (cnt === 0) {
-      if (pushEngine(m.id, src, src.hp, src.nm)) { attached++; }
+      if (AUTO.addEngine(m.id, src, src.hp, src.nm)) { attached++; }
       var hp2 = Math.round(src.hp * 1.15 / 5) * 5;
       if (hp2 === src.hp) { hp2 = src.hp + 10; }
-      if (pushEngine(m.id, src, hp2, Math.round(src.nm * 1.1))) { attached++; }
+      if (AUTO.addEngine(m.id, src, hp2, Math.round(src.nm * 1.1))) { attached++; }
     } else {
       var hp3 = Math.round(src.hp * 1.15 / 5) * 5;
       if (hp3 === src.hp) { hp3 = src.hp + 10; }
-      if (pushEngine(m.id, src, hp3, Math.round(src.nm * 1.1))) { completed++; }
+      if (AUTO.addEngine(m.id, src, hp3, Math.round(src.nm * 1.1))) { completed++; }
     }
   });
   var fAdd = AUTO.faults(0);
   var tAdd = AUTO.tsb(0);
   FIXES += normalize(DB);
   recompute();
-  var after = countByModel();
+  var after = {};
+  arr(DB.engines).forEach(function (e) {
+    arr(e.m).forEach(function (mid) { after[mid] = 1; });
+  });
   var orphan = 0;
   arr(DB.models).forEach(function (m) { if (!after[m.id]) { orphan++; } });
   if (isAdmin()) {
-    audit("fix", "Réparation : " + attached + " motorisations rattachées, " + completed + " complétées, " + fAdd + " pannes, " + tAdd + " bulletins");
+    audit("fix", "Réparation : " + attached + " rattachées, " + completed + " complétées, " + fAdd + " pannes, " + tAdd + " bulletins");
+    markDirty();
     saveNow(true);
     if (REG.live) { publish(true); }
   }
@@ -1567,47 +1571,11 @@ function repairAll(verbose) {
     if (typeof render === "function") { render(); }
     if (typeof runTests === "function") { safe("testsFix", runTests, null); }
     toast(orphan ? "warn" : "ok", "Réparation massive terminée",
-      attached + " motorisations rattachées · " + completed + " modèles complétés · " + fAdd + " pannes · " + tAdd + " bulletins · orphelins restants : " + orphan);
+      attached + " motorisations rattachées · " + completed + " complétées · " + fAdd + " pannes · " + tAdd + " bulletins · orphelins : " + orphan);
     beep(orphan ? "err" : "imp");
   }
   return { attached: attached, completed: completed, faults: fAdd, tsb: tAdd, orphan: orphan };
 }
-
-/* ---------- touche de réparation ---------- */
-function injectRepairBtn() {
-  var top = $("#top");
-  if (!top || $("#repairb")) { return; }
-  var b = D.createElement("button");
-  b.className = "tb";
-  b.id = "repairb";
-  b.type = "button";
-  b.title = "Réparation massive de la base";
-  b.setAttribute("aria-label", "Réparation massive de la base");
-  b.style.color = "#43E08B";
-  b.style.borderColor = "rgba(67,224,139,.45)";
-  b.innerHTML = ic("tool");
-  b.addEventListener("click", function () {
-    if (!isAdmin()) {
-      toast("err", "Réparation réservée admin", "Ouvrez une session administrateur.");
-      return;
-    }
-    repairAll(true);
-  });
-  var ref = $("#diagb");
-  if (ref && ref.parentNode === top) { top.insertBefore(b, ref); } else { top.appendChild(b); }
-}
-window.addEventListener("load", function () {
-  injectRepairBtn();
-  setTimeout(function () {
-    safe("autoRepair", function () { repairAll(false); }, null);
-    if (typeof runTests === "function") { safe("testsAfterFix", runTests, null); }
-    if (typeof render === "function" && MODE) { safe("renderAfterFix", render, null); }
-    setInterval(function () {
-      var b = $("#repairb");
-      if (b) { b.style.display = isAdmin() ? "" : "none"; }
-    }, 800);
-  }, 300);
-});
 
 window.MD_API = {
   db: function () { return DB; },
@@ -1618,5 +1586,548 @@ window.MD_API = {
   repair: repairAll,
   auto: AUTO, purge: purgeCache, save: saveNow, backup: backupExport, restore: backupRestore,
   svcDist: svcDist, svcOil: svcOil, svcFluids: svcFluids,
-  countByModel: countByModel
+  boot: BOOT
 };
+
+/* ---------- portail & sessions ---------- */
+function gateHTML(mode) {
+  var h = "<div class='gcard2'><h1>MECADATA <i>//</i> PORTAIL</h1>";
+  h += "<p class='gsub'>Cache purgé · " + esc(purgeLabel()) + "</p>";
+  if (!mode) {
+    h += "<div class='gmodes'>";
+    h += "<div class='gmode' data-act='gateAdmin'><div class='gi'>" + ic("shield", "width:26px;height:26px") + "</div><h3>ADMINISTRATEUR</h3><p>Imports, exports, masses, recherche auto, sauvegarde locale, contrôle des accès, diffusion.</p></div>";
+    h += "<div class='gmode' data-act='gateTier'><div class='gi'>" + ic("users", "width:26px;height:26px") + "</div><h3>TIERS</h3><p>Consultation protégée par mot de passe. Lecture seule : fiches, pannes, rappels, TSB, plans, studio.</p></div>";
+    h += "</div>";
+    h += "<p class='gnote'>Le mot de passe tiers est communiqué hors application et n'est jamais affiché.</p>";
+  } else if (mode === "admin") {
+    h += "<div class='gform'><form data-form='admin'><label class='lb'>Mot de passe administrateur</label>";
+    h += "<input class='inp mono' type='password' name='pwd' id='gatePwd' value='' placeholder='••••••••' autocomplete='new-password' style='text-align:center;letter-spacing:.2em;font-size:16px'>";
+    h += "<div style='display:flex;gap:8px;margin-top:11px'><button type='button' class='btn ghost' data-act='gateBack'>Retour</button>";
+    h += "<button class='btn pri' style='flex:1'>OUVRIR ING-3</button></div></form>";
+    h += "<p class='gnote'>Champ effacé à chaque lancement — aucun mot de passe conservé.</p></div>";
+  } else {
+    h += "<div class='gform'><form data-form='tier'><label class='lb'>Mot de passe tiers</label>";
+    h += "<input class='inp mono' type='password' name='tpwd' id='gateTierPwd' value='' placeholder='••••••••' autocomplete='new-password' style='text-align:center;letter-spacing:.2em;font-size:16px'>";
+    h += "<div style='display:flex;gap:8px;margin-top:11px'><button type='button' class='btn ghost' data-act='gateBack'>Retour</button>";
+    h += "<button class='btn pri' style='flex:1'>" + ic("unlock") + "ENTRER EN CONSULTATION</button></div></form>";
+    h += "<p class='gnote'>Une seule case · saisie masquée · aucune donnée enregistrée.</p></div>";
+  }
+  return h + "</div>";
+}
+function gateShow(mode) {
+  GATE = mode || null;
+  var g = $("#gate");
+  if (!g) { return; }
+  g.classList.remove("off");
+  g.innerHTML = gateHTML(GATE);
+  if (GATE === "admin") {
+    var p = $("#gatePwd");
+    if (p) { p.value = ""; setTimeout(function () { p.focus(); }, 60); }
+  }
+  if (GATE === "tier") {
+    var t = $("#gateTierPwd");
+    if (t) { t.value = ""; setTimeout(function () { t.focus(); }, 60); }
+  }
+}
+function gateHide() {
+  var g = $("#gate");
+  if (g) { g.classList.add("off"); }
+}
+function enterAdmin() {
+  MODE = "admin";
+  gateHide();
+  DB = clone(SEED);
+  var raw = STORE.get(KEY);
+  if (raw) {
+    safe("load", function () {
+      var d = JSON.parse(raw);
+      if (d && d.db && arr(d.db.engines).length) {
+        DB = d.db;
+        AUDIT = arr(d.audit);
+        if (d.prefs) { Object.keys(d.prefs).forEach(function (k) { PREF[k] = d.prefs[k]; }); }
+        if (d.wp) { Object.keys(d.wp).forEach(function (k) { WP.P[k] = d.wp[k]; }); }
+        LASTSAVE = num(d.ts, 0);
+      }
+    }, null);
+  }
+  FIXES += normalize(DB);
+  recompute();
+  audit("adm", "Session ING-3");
+  S.view = "bord";
+  location.hash = "#/bord";
+  if (typeof render === "function") { render(); }
+  idle(function () {
+    WP.apply();
+    saveNow(true);
+    AUTO.maybe();
+    if (typeof runTests === "function") { runTests(); }
+    if (typeof updateMeta === "function") { updateMeta(); }
+  }, 600);
+  toast("ok", "Session administrateur", "Sauvegarde locale active.");
+  beep("imp");
+}
+function enterTier() {
+  if (REG.tierOpen === false) {
+    toast("err", "Accès tiers coupé", "Contactez l'administrateur.");
+    gateShow("tier");
+    return;
+  }
+  MODE = "tier";
+  TIER = "TIER";
+  TIER_TS = Date.now();
+  gateHide();
+  if (!applyTier()) {
+    DB = clone(SEED);
+    normalize(DB);
+  }
+  recompute();
+  S.view = "bord";
+  location.hash = "#/bord";
+  if (typeof render === "function") { render(); }
+  idle(function () {
+    WP.apply();
+    if (typeof runTests === "function") { runTests(); }
+    if (typeof updateMeta === "function") { updateMeta(); }
+  }, 600);
+  toast("info", "Consultation tiers", "Lecture seule — rév " + num(REG.rev, 0) + ".");
+  beep("ok");
+}
+function tierSync() {
+  if (!isTier()) { return; }
+  if (REG.tierOpen === false || num(REG.tierKick, 0) > TIER_TS) {
+    MODE = null;
+    TIER = null;
+    gateShow(null);
+    if (typeof updateMeta === "function") { updateMeta(); }
+    toast("err", "Session tiers terminée", "Accès coupé ou révoqué.");
+    return;
+  }
+  if (applyTier()) {
+    recompute();
+    if (typeof updateMeta === "function") { updateMeta(); }
+    if (typeof render === "function") { render(); }
+    toast("info", "Base mise à jour", "rév " + num(REG.rev, 0));
+  }
+}
+
+/* ---------- imports (JSON/CSV/TSV/XML/YAML/HTML) ---------- */
+function pick(r, names) {
+  if (!r) { return undefined; }
+  var i;
+  for (i = 0; i < names.length; i++) {
+    var v = r[names[i]];
+    if (v !== undefined && v !== null && v !== "") { return v; }
+  }
+  var map = {};
+  Object.keys(r).forEach(function (k) { map[nk(k)] = r[k]; });
+  for (i = 0; i < names.length; i++) {
+    var w = map[nk(names[i])];
+    if (w !== undefined && w !== null && w !== "") { return w; }
+  }
+  return undefined;
+}
+function detectKind(r) {
+  if (!r || typeof r !== "object") { return null; }
+  if (pick(r, ["hp", "puissance", "ch", "kw", "code_moteur"]) !== undefined) { return "engines"; }
+  if (pick(r, ["ref", "reference"]) !== undefined && pick(r, ["date"]) !== undefined) { return "tsb"; }
+  if (pick(r, ["sev", "severite", "gravite"]) !== undefined) { return "faults"; }
+  if (pick(r, ["segment", "carrosserie", "phase"]) !== undefined) { return "models"; }
+  if (pick(r, ["pays", "country"]) !== undefined) { return "brands"; }
+  return null;
+}
+function mapRec(r, kind) {
+  if (kind === "brands") {
+    var n = pick(r, ["n", "name", "nom", "marque"]);
+    if (!n) { throw "nom manquant"; }
+    var pays = str(pick(r, ["pays", "country"]), "—");
+    return { id: str(pick(r, ["id"]), "B-" + slug(n)), n: str(n), pays: pays, grp: str(pick(r, ["grp", "group"]), "—"), region: str(pick(r, ["region"]), regionOf(pays)) };
+  }
+  if (kind === "models") {
+    var mn = pick(r, ["n", "name", "nom", "model", "modele"]);
+    if (!mn) { throw "nom manquant"; }
+    var br = pick(r, ["b", "brand", "marque"]);
+    if (!br) { throw "marque manquante"; }
+    return { id: str(pick(r, ["id"]), "M-" + slug(br) + "-" + slug(mn)), b: str(br), bRaw: str(br), n: str(mn), y: [num(pick(r, ["y0", "from"]), 2017), num(pick(r, ["y1", "to"]), YMAX)], seg: str(pick(r, ["seg", "segment"]), "Compacte"), phase: clamp(num(pick(r, ["phase", "gen"]), 1), 1, 12) };
+  }
+  if (kind === "engines") {
+    var code = pick(r, ["code", "code_moteur"]);
+    if (!code) { throw "code manquant"; }
+    var lab = pick(r, ["label", "name", "nom"]);
+    if (!lab) { throw "libellé manquant"; }
+    var hp = num(pick(r, ["hp", "puissance", "ch"]), 0);
+    var kw = num(pick(r, ["kw"]), 0);
+    if (!hp && kw) { hp = Math.round(kw * 1.3596); }
+    if (!(hp > 0 && hp <= 3000)) { throw "puissance invalide"; }
+    var mr = list(pick(r, ["m", "models", "modeles", "modele"]));
+    if (!mr.length) {
+      var mo = pick(r, ["modele", "model"]);
+      if (mo) { mr = [str(mo)]; }
+    }
+    if (!mr.length) { throw "aucun modèle"; }
+    return { id: "", m: [], mRaw: mr, code: str(code), fam: str(pick(r, ["fam", "famille"]), str(code)), label: str(lab), fuel: nfuel(pick(r, ["fuel", "energie"])), disp: num(pick(r, ["disp", "cm3"]), 0), hp: Math.round(hp), nm: num(pick(r, ["nm", "couple"]), 0), kw: Math.round(hp * 0.7355), y: [num(pick(r, ["y0", "from"]), 2017), num(pick(r, ["y1", "to"]), YMAX)], gb: str(pick(r, ["gb", "boite"]), "BVM") };
+  }
+  if (kind === "faults") {
+    var t = pick(r, ["t", "title", "titre", "panne"]);
+    if (!t) { throw "titre manquant"; }
+    var c0 = num(pick(r, ["cost0"]), 0);
+    var c1 = num(pick(r, ["cost1"]), c0);
+    return { id: "", t: str(t), fam: list(pick(r, ["fam", "familles"])), mt: list(pick(r, ["mt", "modeles"])), ph: list(pick(r, ["ph", "phases"])), sev: nsev(pick(r, ["sev", "severite"])), freq: nfreq(pick(r, ["freq"])), y: [num(pick(r, ["y0"]), 2017), num(pick(r, ["y1"]), YMAX)], km: [num(pick(r, ["km0"]), 0), num(pick(r, ["km1"]), KMMAX)], sym: list(String(pick(r, ["sym", "symptomes"]) || "").replace(/\n/g, "|")), cause: str(pick(r, ["cause"]), "—"), fix: str(pick(r, ["fix", "solution"]), "—"), cost: [c0, Math.max(c0, c1)], status: str(pick(r, ["status", "statut"]), "Surveillance"), dom: str(pick(r, ["dom", "domaine"]), "Moteur") };
+  }
+  if (kind === "tsb") {
+    var rf = pick(r, ["ref", "reference"]);
+    if (!rf) { throw "réf manquante"; }
+    var tt = pick(r, ["t", "title", "titre"]);
+    if (!tt) { throw "titre manquant"; }
+    return { id: "", ref: str(rf), b: list(pick(r, ["b", "marques"])), bRaw: list(pick(r, ["b", "marques"])), fam: list(pick(r, ["fam"])), mt: list(pick(r, ["mt", "modeles"])), ph: list(pick(r, ["ph"])), t: str(tt), date: str(pick(r, ["date"]), "2026-01").slice(0, 7), cat: str(pick(r, ["cat", "categorie"]), "Moteur"), sev: nsev(pick(r, ["sev"])), sum: str(pick(r, ["sum", "resume"]), "—"), act: str(pick(r, ["act", "action"]), "—"), dom: str(pick(r, ["dom"]), str(pick(r, ["cat"]), "Moteur")) };
+  }
+  throw "type inconnu";
+}
+function resolveAll(g) {
+  var warn = [], drop = [], nb = [], nm = [];
+  var bi = {}, bn = {}, mi = {}, mn = {}, seen = {};
+  arr(DB.brands).forEach(function (b) { bi[b.id] = 1; bn[nk(b.n)] = b.id; });
+  arr(DB.models).forEach(function (m) { mi[m.id] = 1; mn[nk(m.n)] = m.id; });
+  function uq(k, base) {
+    var id = base, i = 2;
+    while (seen[k + id] || arr(DB[k]).some(function (x) { return x && x.id === id; })) { id = base + "-" + i; i++; }
+    seen[k + id] = 1;
+    return id;
+  }
+  function bid(v) {
+    if (v == null || v === "") { return null; }
+    var r = str(v);
+    if (bi[r]) { return bi[r]; }
+    var l = nk(r);
+    if (bn[l]) { return bn[l]; }
+    var id = uq("brands", "B-" + slug(r));
+    bi[id] = 1; bn[l] = 1;
+    nb.push({ id: id, n: r, pays: "—", grp: "—", region: "europe" });
+    warn.push("marque créée " + r);
+    return id;
+  }
+  function mid(v) {
+    var r = str(v);
+    if (!r) { return null; }
+    if (mi[r]) { return mi[r]; }
+    var l = nk(r);
+    if (mn[l]) { return mn[l]; }
+    var b = null, rest = r;
+    Object.keys(bn).forEach(function (k) {
+      if (!b && l.indexOf(k) === 0 && l.length > k.length + 2) {
+        b = bn[k];
+        rest = r.slice(k.length).replace(/^[\s\-:]+/, "");
+      }
+    });
+    b = b || bid("Import");
+    var id = uq("models", "M-" + slug(rest || r));
+    mi[id] = 1; mn[nk(rest || r)] = 1;
+    nm.push({ id: id, b: b, n: rest || r, y: [2017, YMAX], seg: "Compacte", phase: 1 });
+    warn.push("modèle créé " + (rest || r));
+    return id;
+  }
+  var out = { brands: [], models: [], engines: [], faults: [], tsb: [] };
+  arr(g.brands).forEach(function (r) { r.id = r.id || uq("brands", "B-" + slug(r.n)); bi[r.id] = 1; out.brands.push(r); });
+  arr(g.models).forEach(function (r) {
+    var b = bid(r.bRaw || r.b);
+    if (!b) { drop.push(r.n); return; }
+    r.b = b; delete r.bRaw;
+    r.id = r.id || uq("models", "M-" + slug(b) + "-" + slug(r.n));
+    mi[r.id] = 1;
+    out.models.push(r);
+  });
+  arr(g.engines).forEach(function (r) {
+    var ms = arr(r.mRaw).map(mid).filter(Boolean);
+    if (!ms.length) { drop.push(r.label); return; }
+    r.m = ms; delete r.mRaw;
+    r.id = r.id || uq("engines", "E-" + slug(r.code));
+    out.engines.push(r);
+  });
+  arr(g.faults).forEach(function (r) { r.id = r.id || uq("faults", "F-" + slug(r.t)); out.faults.push(r); });
+  arr(g.tsb).forEach(function (r) {
+    r.b = arr(r.bRaw || r.b).map(bid).filter(Boolean);
+    delete r.bRaw;
+    r.id = r.id || uq("tsb", "T-" + slug(r.ref));
+    out.tsb.push(r);
+  });
+  out.brands = nb.concat(out.brands);
+  out.models = nm.concat(out.models);
+  return { out: out, warn: warn, drop: drop };
+}
+var KEYFN = {
+  brands: function (x) { return nk(x.n); },
+  models: function (x) { return nk(x.b + x.n); },
+  engines: function (x) { return nk(x.code + x.fam + x.label + x.hp); },
+  faults: function (x) { return nk(x.t); },
+  tsb: function (x) { return nk(x.ref || x.t); }
+};
+function upsert(kind, rec) {
+  var a = arr(DB[kind]);
+  var ex = null;
+  if (rec.id) {
+    a.forEach(function (x) { if (x && x.id === rec.id) { ex = x; } });
+  }
+  if (!ex) {
+    var k = KEYFN[kind](rec);
+    a.forEach(function (x) { if (x && KEYFN[kind](x) === k) { ex = x; } });
+  }
+  if (ex) {
+    Object.keys(rec).forEach(function (kk) {
+      var v = rec[kk];
+      if (v == null || v === "") { return; }
+      if (Array.isArray(v)) { if (v.length) { ex[kk] = v; } } else { ex[kk] = v; }
+    });
+    return "upd";
+  }
+  if (!rec.id || a.some(function (x) { return x && x.id === rec.id; })) {
+    rec.id = uid(kind.charAt(0).toUpperCase());
+  }
+  a.push(rec);
+  DB[kind] = a;
+  return "add";
+}
+function parseDelim(t) {
+  var first = String(t).split(/\r?\n/)[0] || "";
+  var cs = [[";", 0], [",", 0], ["\t", 0], ["|", 0]];
+  cs.forEach(function (c) { c[1] = first.split(c[0]).length - 1; });
+  cs.sort(function (a, b) { return b[1] - a[1]; });
+  var d = cs[0][1] > 0 ? cs[0][0] : ",";
+  var rows = [], row = [], cur = "", q = false, i;
+  for (i = 0; i < t.length; i++) {
+    var ch = t[i];
+    if (q) {
+      if (ch === '"') {
+        if (t[i + 1] === '"') { cur += '"'; i++; } else { q = false; }
+      } else { cur += ch; }
+    } else if (ch === '"') { q = true; }
+    else if (ch === d) { row.push(cur); cur = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && t[i + 1] === "\n") { i++; }
+      row.push(cur); cur = "";
+      if (row.some(function (x) { return String(x).trim(); })) { rows.push(row); }
+      row = [];
+    } else { cur += ch; }
+  }
+  row.push(cur);
+  if (row.some(function (x) { return String(x).trim(); })) { rows.push(row); }
+  if (rows.length < 2) { return []; }
+  var hd = rows[0].map(function (x) { return String(x).trim(); });
+  return rows.slice(1).map(function (r) {
+    var o = {};
+    hd.forEach(function (k, i2) { o[k] = r[i2] === undefined ? "" : r[i2]; });
+    return o;
+  });
+}
+function sniff(name, text) {
+  var ext = String(name || "").split(".").pop().toLowerCase();
+  var t = String(text || "").trim();
+  if (ext === "json" || t[0] === "{" || t[0] === "[") {
+    try { return { fmt: "JSON", data: JSON.parse(t) }; } catch (e) {}
+  }
+  if (/^<\?xml/.test(t) || /^<[a-zA-Z]/.test(t)) {
+    if (/<table/i.test(t)) {
+      var recs = safe("h", function () {
+        var doc = new DOMParser().parseFromString(t, "text/html");
+        var tb = doc.querySelector("table");
+        if (!tb) { throw "x"; }
+        var trs = tb.querySelectorAll("tr");
+        if (trs.length < 2) { throw "x"; }
+        var hd = [].slice.call(trs[0].children).map(function (c) { return c.textContent.trim(); });
+        var out = [];
+        for (var r = 1; r < trs.length; r++) {
+          var cs = [].slice.call(trs[r].children);
+          var o = {};
+          hd.forEach(function (k, i) { o[k] = cs[i] ? cs[i].textContent.trim() : ""; });
+          out.push(o);
+        }
+        return out;
+      }, []);
+      if (recs.length) { return { fmt: "HTML", records: recs }; }
+    }
+    var xr = safe("x", function () {
+      var doc = new DOMParser().parseFromString(t, "application/xml");
+      var kids = [].slice.call(doc.documentElement.children);
+      var tc = {}, best = null, bn = 0;
+      kids.forEach(function (k) {
+        tc[k.tagName] = (tc[k.tagName] || 0) + 1;
+        if (tc[k.tagName] > bn) { bn = tc[k.tagName]; best = k.tagName; }
+      });
+      return kids.filter(function (k) { return k.tagName === best; }).map(function (k) {
+        var o = {};
+        [].slice.call(k.children).forEach(function (c) { o[c.tagName] = c.textContent.trim(); });
+        return o;
+      });
+    }, []);
+    if (xr.length) { return { fmt: "XML", records: xr }; }
+  }
+  if (/^\s*-\s+\w+\s*:/.test(t) || ext === "yaml" || ext === "yml") {
+    var out = [], cur = null;
+    t.split(/\r?\n/).forEach(function (l) {
+      if (!l.trim() || /^#/.test(l)) { return; }
+      var m = l.match(/^\s*-\s*(.*)/);
+      if (m) {
+        if (cur) { out.push(cur); }
+        cur = {};
+        var kv = m[1].match(/^([^:]+):\s*(.*)/);
+        if (kv) { cur[kv[1].trim()] = kv[2].trim(); }
+        return;
+      }
+      var k2 = l.match(/^\s*([^:]+):\s*(.*)/);
+      if (k2 && cur) { cur[k2[1].trim()] = k2[2].trim(); }
+    });
+    if (cur) { out.push(cur); }
+    if (out.length) { return { fmt: "YAML", records: out }; }
+  }
+  var r2 = parseDelim(t);
+  if (r2.length) { return { fmt: ext === "tsv" ? "TSV" : "CSV", records: r2 }; }
+  throw "format non reconnu";
+}
+function analyze(parsed, label) {
+  if (!isAdmin()) { toast("err", "Import refusé", "Admin seul."); return; }
+  var rep = $("#impReport");
+  if (!rep) { return; }
+  var g = {}, rej = [];
+  if (parsed && parsed.data && Array.isArray(parsed.data)) {
+    var k = detectKind(parsed.data[0] || {});
+    if (k) { g[k] = parsed.data; }
+  } else if (parsed && parsed.data && typeof parsed.data === "object") {
+    Object.keys(parsed.data).forEach(function (key) {
+      var v = parsed.data[key];
+      if (!Array.isArray(v) || !v.length) { return; }
+      var kk = { marques: "brands", brands: "brands", modeles: "models", models: "models", motorisations: "engines", engines: "engines", pannes: "faults", faults: "faults", fiches: "faults", tsb: "tsb", rappels: "tsb", bulletins: "tsb" }[nk(key)] || detectKind(v[0]);
+      if (kk) { g[kk] = (g[kk] || []).concat(v); }
+    });
+  } else if (parsed && parsed.records) {
+    var k2 = detectKind(parsed.records[0] || {});
+    if (k2) { g[k2] = parsed.records; }
+  }
+  if (!Object.keys(g).length) {
+    rep.innerHTML = "<div class='rep rj'>Aucune collection reconnue.</div>";
+    beep("err");
+    return;
+  }
+  var mp = {};
+  Object.keys(g).forEach(function (k3) {
+    mp[k3] = [];
+    arr(g[k3]).forEach(function (r, i) {
+      try { mp[k3].push(mapRec(r, k3)); } catch (e) { rej.push(k3 + "[" + i + "] " + e); }
+    });
+  });
+  var R = resolveAll(mp);
+  var ok = 0;
+  Object.keys(R.out).forEach(function (k4) { ok += arr(R.out[k4]).length; });
+  IMPORT = R;
+  rep.innerHTML = "<div class='rep'><b class='ok'>" + ok + " prêt(s)</b> · <b class='rj'>" + (rej.length + R.drop.length) + " rejeté(s)</b> · <b class='wn'>" + R.warn.length + " création(s)</b><div class='mono' style='font-size:10px;margin-top:5px'>" + esc(parsed.fmt) + (label ? " · " + esc(label) : "") + "</div></div>";
+  var ap = $("#impApply");
+  if (ap) { ap.disabled = ok === 0; }
+  beep(ok ? "ok" : "err");
+}
+function applyImport() {
+  if (!isAdmin() || !IMPORT) { return; }
+  snapshot("import");
+  var ins = 0, up = 0;
+  ["brands", "models", "engines", "faults", "tsb"].forEach(function (k) {
+    arr(IMPORT.out[k]).forEach(function (r) {
+      if (upsert(k, r) === "add") { ins++; } else { up++; }
+    });
+  });
+  IMPORT = null;
+  mutate("imp", "Import " + ins + "+" + up);
+  saveNow(true);
+  toast("ok", "Import fusionné", ins + " ajouts, " + up + " maj", true);
+  beep("imp");
+}
+function megaSilent(i) {
+  var c = arr(RAW.cand)[i];
+  if (!c) { return; }
+  if (!BIDX[c.brand]) {
+    DB.brands.push({ id: c.brand, n: c.brand, pays: "—", grp: "—", region: "europe" });
+    reindex();
+  }
+  var mid2 = c.brand + "-" + slug(c.model);
+  var m = MIDX[mid2];
+  if (!m) {
+    DB.models.push({ id: mid2, b: c.brand, n: c.model, y: [c.y0, c.y1], seg: str(SEGS[c.seg], "Compacte"), phase: c.phase });
+    reindex();
+    m = MIDX[mid2];
+  }
+  if (!m) { return; }
+  var dup = arr(DB.engines).some(function (e) {
+    return arr(e.m).indexOf(mid2) > -1 && e.code === c.code && e.hp === c.hp;
+  });
+  if (dup) { return; }
+  var e2 = mkEng(arr(DB.engines).length + 1, mid2, c.code, c.code, c.label, c.fuel, c.disp, c.hp, c.nm, c.y0, c.y1, c.gb);
+  DB.engines.push(e2);
+  EIDX[e2.id] = e2;
+}
+
+/* ---------- démarrage en étapes ---------- */
+function bootSplash() {
+  var o = $("#boot");
+  var done = function () { if (o) { o.className = "off"; } };
+  setTimeout(done, 450);
+  var lg = $("#bl");
+  var bb = $("#bbar");
+  if (lg) { lg.innerHTML = "<div><b>OK</b> base prête · portail affiché</div>"; }
+  if (bb) { bb.style.width = "100%"; }
+  mark("splash");
+}
+function init() {
+  purgeCache(false);
+  mark("purge");
+  if (!window.MD_RAW) {
+    logErr("init", new Error("MD_RAW absent"));
+    window.__MD_READY = false;
+    if (window.__MD_FAIL) { window.__MD_FAIL(); }
+    return;
+  }
+  RAW = window.MD_RAW;
+  SEED = safe("build", function () { return build(RAW); }, { brands: [], models: [], engines: [], faults: [], tsb: [] });
+  mark("build");
+  safe("norm", function () { normalize(SEED); }, null);
+  DB = clone(SEED);
+  safe("reg", regLoad, null);
+  safe("autoload", function () { AUTO.load(); }, null);
+  safe("recompute", recompute, null);
+  mark("recompute");
+  safe("bind", function () { if (typeof bind === "function") { bind(); } }, null);
+  safe("gate", function () { gateShow(null); }, null);
+  window.__MD_READY = true;
+  window.__MD_SCRIPTS.app = true;
+  mark("ready");
+  var jf = $("#jsfail");
+  if (jf && jf.parentNode) { jf.parentNode.removeChild(jf); }
+  var fb = $("#fallback");
+  if (fb && fb.parentNode) { fb.parentNode.removeChild(fb); }
+  bootSplash();
+  safe("ch", function () {
+    if (window.BroadcastChannel) {
+      CH = new BroadcastChannel("mecadata_v24");
+      CH.onmessage = function (ev) {
+        var m = ev.data || {};
+        if (m.t === "reg") {
+          regLoad();
+          if (isTier()) { tierSync(); }
+          else if (isAdmin()) {
+            if (typeof updateMeta === "function") { updateMeta(); }
+            if (S.view === "admin" && typeof render === "function") { render(); }
+          }
+        }
+        if (m.t === "pub" && isTier()) { tierSync(); }
+      };
+    }
+  }, null);
+  idle(function () {
+    safe("wp", function () { WP.init(); }, null);
+    mark("studio");
+  }, 900);
+  idle(function () {
+    safe("meta", function () { if (typeof updateMeta === "function") { updateMeta(); } }, null);
+  }, 300);
+  setTimeout(function () { toast("ok", "Cache purgé à l'ouverture", purgeLabel()); }, 1600);
+}
+safe("init", init, null);
+if (!window.__MD_READY) {
+  if (window.__MD_LIFT) { window.__MD_LIFT(); }
+  var g0 = $("#gate");
+  if (g0) { g0.className = "off"; }
+}
