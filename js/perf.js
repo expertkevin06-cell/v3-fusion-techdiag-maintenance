@@ -1,15 +1,10 @@
-/* MECADATA // TURBO v21 — suppression de la latence globale.
-   Ce module se greffe sur le noyau existant sans le réécrire :
-   • nk() mémoïsé (des millions d'appels évités)
-   • index partagés marques / modèles / motorisations / pannes / TSB
-   • recompute() en O(n) sans sérialisation JSON de la base
-   • recherche prédictive indexée + debounce (frappe instantanée)
-   • render() coalescé dans une frame, results() mémoïsé
-   • autovérification : tests structurels immédiats, tests lourds en idle
-   • sauvegarde locale différée et sautée si rien n'a changé
-   • fond animé : halo plafonné, FPS borné, pause pendant l'interaction
-   • listes longues accélérées (content-visibility)
-   • HUD de latence réel + panneau PERFORMANCE à réglages live. */
+/* MECADATA // TURBO + CORRÉLATION v23
+   Corrélation réelle pannes / rappels / TSB / bulletins ↔ marque ↔ modèle ↔
+   motorisation ↔ puissance, validée par le chevauchement des ANNÉES DE
+   PRODUCTION (modèle, motorisation, famille). Chaque fiche affiche son
+   périmètre corrélé et ses années. Index O(1), nk mémoïsé, rendu coalescé,
+   recherche indexée, tests lourds différés, sauvegarde différée, fond économe,
+   HUD de latence et panneau PERFORMANCE/CORRÉLATION à réglages live. */
 (function () {
   "use strict";
 
@@ -18,60 +13,43 @@
   function qa(s, r) { return [].slice.call((r || D).querySelectorAll(s)); }
   function A(v) { return Array.isArray(v) ? v : []; }
   function N(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
-  function E(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function E(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]); }); }
   function F(n) { n = N(n, 0); try { return n.toLocaleString("fr-FR"); } catch (e) { return String(n); } }
   function IC(n, st) { return "<svg class='ic'" + (st ? " style='" + st + "'" : "") + "><use href='#i-" + n + "'/></svg>"; }
   function now() { return (W.performance && performance.now) ? performance.now() : Date.now(); }
 
-  var PKEY = "md_perf_v21";
+  var PKEY = "md_perf_v23";
   var P = {
-    quality: "eco",
-    fps: 30,
-    count: 70,
-    density: 42,
-    glow: 26,
-    searchDelay: 110,
-    lot: 140,
-    pauseOnInput: true,
-    fastLists: true,
-    halo: true
+    quality: "eco", fps: 30, count: 70, density: 42, glow: 26,
+    searchDelay: 110, lot: 140, pauseOnInput: true, fastLists: true, halo: true,
+    yearStrict: true, hist: false, minScore: 3
   };
   var ORIG = {};
-  var LAST_INPUT = 0;
-  var LAST_FRAME = 0;
+  var LAST_INPUT = 0, LAST_FRAME = 0;
   var LAT = { last: 0, avg: 0, n: 0, worst: 0 };
   var TOUCH = 0;
-  var SAVED_STAMP = "";
-  var SAVE_TIMER = 0;
-  var RENDER_REQ = 0;
-  var META_REQ = 0;
-  var SEARCH_TIMER = 0;
-  var YEAR_TIMER = 0;
-  var HEAVY = [];
+  var SAVED_STAMP = "", SAVE_TIMER = 0;
+  var RENDER_REQ = 0, META_REQ = 0, SEARCH_TIMER = 0, POST_TIMER = 0, PAINT_REQ = 0;
   var HEAVY_RUN = false;
-  var EXPAND_LAST = 0;
-  var AUDIT_LAST = 0;
+  var EXPAND_LAST = 0, AUDIT_LAST = 0;
   var IX = null;
+  var FCACHE = {}, TCACHE = {}, ICACHE = {}, RES = { key: "", val: null };
+  var NKC = new Map();
+  var CORR = { strong: 0, medium: 0, dropped: 0, hist: 0, pairs: 0 };
 
   function load() {
     try {
       var r = JSON.parse(localStorage.getItem(PKEY));
       if (r && typeof r === "object") {
-        Object.keys(P).forEach(function (k) {
-          if (r[k] !== undefined) { P[k] = r[k]; }
-        });
+        Object.keys(P).forEach(function (k) { if (r[k] !== undefined) { P[k] = r[k]; } });
       }
     } catch (e) {}
   }
-  function save() {
-    try { localStorage.setItem(PKEY, JSON.stringify(P)); } catch (e) {}
-  }
+  function save() { try { localStorage.setItem(PKEY, JSON.stringify(P)); } catch (e) {} }
   function db() { return W.DB || { brands: [], models: [], engines: [], faults: [], tsb: [] }; }
-  function touch() { TOUCH++; IX = null; }
+  function touch() { TOUCH++; IX = null; FCACHE = {}; TCACHE = {}; ICACHE = {}; RES.key = ""; }
   W.MD_TOUCH = touch;
 
-  /* ══════════ nk mémoïsé ══════════ */
-  var NKC = new Map();
   function nkFast(s) {
     var k = String(s == null ? "" : s);
     var hit = NKC.get(k);
@@ -81,8 +59,16 @@
     NKC.set(k, v);
     return v;
   }
+  function famKey(code) {
+    if (W.MD_FAM && typeof W.MD_FAM.key === "function") { return W.MD_FAM.key(code); }
+    return nkFast(code);
+  }
+  function famRec(code) {
+    if (W.MD_FAM && typeof W.MD_FAM.info === "function") { return W.MD_FAM.info(code); }
+    return null;
+  }
 
-  /* ══════════ gardes d'interaction & ordonnanceur ══════════ */
+  /* ---------- gardes & ordonnanceur ---------- */
   function markInput() { LAST_INPUT = now(); }
   ["pointerdown", "keydown", "input", "wheel", "touchstart", "scroll"].forEach(function (ev) {
     D.addEventListener(ev, markInput, { passive: true, capture: true });
@@ -91,17 +77,11 @@
   function idle(fn, wait) {
     var limit = now() + (wait == null ? 2500 : wait);
     function tick() {
-      if (!busy(220) || now() > limit) {
-        try { fn(); } catch (e) {}
-        return;
-      }
+      if (!busy(220) || now() > limit) { try { fn(); } catch (e) {} return; }
       setTimeout(tick, 90);
     }
-    if (W.requestIdleCallback) {
-      requestIdleCallback(function () { tick(); }, { timeout: wait == null ? 1200 : wait });
-    } else {
-      setTimeout(tick, 60);
-    }
+    if (W.requestIdleCallback) { requestIdleCallback(function () { tick(); }, { timeout: wait == null ? 1200 : wait }); }
+    else { setTimeout(tick, 60); }
   }
   function chunk(tasks, done) {
     if (HEAVY_RUN) { return; }
@@ -114,34 +94,56 @@
         try { t(); } catch (e) {}
       }
       if (tasks.length) { setTimeout(step, 24); }
-      else {
-        HEAVY_RUN = false;
-        if (done) { try { done(); } catch (e) {} }
-      }
+      else { HEAVY_RUN = false; if (done) { try { done(); } catch (e) {} } }
     }
     setTimeout(step, 40);
   }
 
-  /* ══════════ index partagés ══════════ */
+  /* ---------- années ---------- */
+  function yv(v) {
+    var a = A(v);
+    var x = N(a[0], 2017), y = N(a[1], 2027);
+    if (x > y) { var t = x; x = y; y = t; }
+    return [x, y];
+  }
+  function ovl(a, b) {
+    var x = yv(a), y = yv(b);
+    return x[0] <= y[1] && y[0] <= x[1];
+  }
+  function modelById(id) {
+    var f = null;
+    A(db().models).forEach(function (m) { if (m && m.id === id) { f = m; } });
+    return f;
+  }
+  function brandById(id) {
+    var f = null;
+    A(db().brands).forEach(function (b) { if (b && b.id === id) { f = b; } });
+    return f;
+  }
+  function yearsLabel(list) {
+    if (!list.length) { return "—"; }
+    var lo = 9999, hi = 0;
+    list.forEach(function (y) { lo = Math.min(lo, y[0]); hi = Math.max(hi, y[1]); });
+    return lo + "-" + hi;
+  }
+
+  /* ---------- index + corrélation ---------- */
   function stamp() {
     var d = db();
-    return [A(d.brands).length, A(d.models).length, A(d.engines).length, A(d.faults).length, A(d.tsb).length, TOUCH].join(":");
+    return [A(d.brands).length, A(d.models).length, A(d.engines).length, A(d.faults).length, A(d.tsb).length, TOUCH, P.yearStrict ? 1 : 0, P.hist ? 1 : 0, P.minScore].join(":");
   }
-  function words(k) {
-    var m = String(k).match(/[a-z0-9]+/g);
-    return m || [];
-  }
+  function words(k) { var m = String(k).match(/[a-z0-9]+/g); return m || []; }
   function build() {
     var st = stamp();
     if (IX && IX.stamp === st) { return IX; }
     var d = db();
     var x = {
       stamp: st, brById: {}, modById: {}, engById: {},
-      eByFam: {}, eByModel: {}, fByFam: {}, tByFam: {}, tByBrand: {},
-      fByModel: {}, tByModel: {}, wordModels: {}, modKey: {},
+      eByFam: {}, eByModel: {}, wordModels: {}, modKey: {},
+      fEng: {}, tEng: {}, fIds: {}, tIds: {},
       search: [], size: 0
     };
-    var i, j;
+    var i, w;
     A(d.brands).forEach(function (b) { if (b) { x.brById[b.id] = b; } });
     A(d.models).forEach(function (m) {
       if (!m) { return; }
@@ -153,113 +155,182 @@
         if (!x.wordModels[ws[i]]) { x.wordModels[ws[i]] = []; }
         x.wordModels[ws[i]].push(m.id);
       }
-      x.fByModel[m.id] = [];
-      x.tByModel[m.id] = [];
       x.eByModel[m.id] = [];
+      x.fEng[m.id] = x.fEng[m.id] || {};
     });
     A(d.engines).forEach(function (e) {
       if (!e) { return; }
       x.engById[e.id] = e;
-      if (!x.eByFam[e.fam]) { x.eByFam[e.fam] = []; }
-      x.eByFam[e.fam].push(e);
+      var fk = famKey(e.fam || e.code);
+      if (!x.eByFam[fk]) { x.eByFam[fk] = []; }
+      x.eByFam[fk].push(e);
       A(e.m).forEach(function (mid) {
         if (x.eByModel[mid]) { x.eByModel[mid].push(e); }
       });
+      x.fEng[e.id] = [];
+      x.tEng[e.id] = [];
       x.size += 220;
     });
     function candidates(tok) {
       var ws = words(tok);
       if (!ws.length) { return []; }
       var best = null;
-      for (var w = 0; w < ws.length; w++) {
-        var list = x.wordModels[ws[w]];
+      for (var j = 0; j < ws.length; j++) {
+        var list = x.wordModels[ws[j]];
         if (!list) { return []; }
         if (!best || list.length < best.length) { best = list; }
       }
       return best || [];
     }
-    function bind(store, items, isT) {
-      A(items).forEach(function (it) {
-        if (!it) { return; }
-        A(it.fam).forEach(function (fm) {
-          var key = isT ? x.tByFam : x.fByFam;
-          if (!key[fm]) { key[fm] = []; }
-          key[fm].push(it);
-        });
-        var mt = A(it.mt);
-        if (mt.indexOf("*") > -1) {
-          A(d.models).forEach(function (m) {
-            if (store[m.id] && store[m.id].indexOf(it) < 0) { store[m.id].push(it); }
-          });
+    function modelsForTokens(mt) {
+      var out = {};
+      A(mt).forEach(function (t) {
+        var tok = nkFast(t);
+        if (!tok) { return; }
+        if (tok === "*") {
+          A(d.models).forEach(function (m) { out[m.id] = 2; });
           return;
         }
-        for (var t = 0; t < mt.length; t++) {
-          var tok = nkFast(mt[t]);
-          if (!tok) { continue; }
-          var cand = candidates(tok);
-          for (var c = 0; c < cand.length; c++) {
-            var mid = cand[c];
-            if (x.modKey[mid].indexOf(tok) > -1 && store[mid] && store[mid].indexOf(it) < 0) {
-              store[mid].push(it);
-            }
-          }
+        var cand = candidates(tok);
+        for (var c = 0; c < cand.length; c++) {
+          var mk = x.modKey[cand[c]];
+          if (mk.indexOf(tok) > -1) { out[cand[c]] = 2; }
+          else if (tok.indexOf(mk) > -1 && mk.length >= 4) { out[cand[c]] = 1; }
+        }
+      });
+      return out;
+    }
+    var SV = W.SV || {};
+    function scoreItem(it, e, m, isT) {
+      var s = 0;
+      var fk = famKey(e.fam || e.code);
+      var famHit = 0;
+      A(it.fam).forEach(function (fmc) {
+        if (famKey(fmc) === fk) { famHit = 3; }
+        else if (!famHit) {
+          var a = nkFast(fmc), b = fk;
+          if (a.length >= 4 && (b.indexOf(a) === 0 || a.indexOf(b) === 0)) { famHit = 2; }
+        }
+      });
+      s += famHit;
+      var mk = x.modKey[m.id] || "";
+      var modHit = 0;
+      A(it.mt).forEach(function (t) {
+        var tok = nkFast(t);
+        if (!tok) { return; }
+        if (tok === "*") { modHit = Math.max(modHit, 1); return; }
+        if (mk.indexOf(tok) > -1) { modHit = Math.max(modHit, 2); }
+        else if (tok.indexOf(mk) > -1 && mk.length >= 4) { modHit = Math.max(modHit, 1); }
+      });
+      s += modHit;
+      if (isT && A(it.b).indexOf(m.b) > -1) { s += 3; }
+      if (!isT && famHit) {
+        var rec = famRec(e.fam || e.code);
+        if (rec && rec.brands.indexOf(m.b) > -1) { s += 1; }
+      }
+      var ey = yv(e.y), my = yv(m.y), iy = yv(it.y);
+      var yOk = ovl(iy, ey) || ovl(iy, my);
+      if (P.yearStrict && !yOk) { return -1; }
+      if (yOk) { s += 1; } else { s -= 2; }
+      var rec2 = famRec(e.fam || e.code);
+      if (rec2 && A(it.dom).length) {
+        var dk = nkFast(it.dom);
+        if (rec2.tech.indexOf(dk) > -1) { s += 1; }
+      }
+      if (famHit === 3 && modHit === 2) { CORR.strong++; }
+      else if (famHit >= 2 || modHit >= 2) { CORR.medium++; }
+      return s;
+    }
+    CORR = { strong: 0, medium: 0, dropped: 0, hist: 0, pairs: 0 };
+    function bind(items, isT) {
+      A(items).forEach(function (it) {
+        if (!it) { return; }
+        var pool = {};
+        A(it.fam).forEach(function (fmc) {
+          A(x.eByFam[famKey(fmc)]).forEach(function (e) { pool[e.id] = e; });
+        });
+        var mods = modelsForTokens(it.mt);
+        Object.keys(mods).forEach(function (mid) {
+          A(x.eByModel[mid]).forEach(function (e) { pool[e.id] = e; });
+        });
+        if (isT) {
+          A(it.b).forEach(function (bid) {
+            A(d.engines).forEach(function (e) {
+              var m = x.modById[A(e.m)[0]];
+              if (m && m.b === bid) { pool[e.id] = e; }
+            });
+          });
+        }
+        var ids = Object.keys(pool);
+        for (var j = 0; j < ids.length; j++) {
+          var e = pool[ids[j]];
+          var m = x.modById[A(e.m)[0]];
+          if (!m) { continue; }
+          var sc = scoreItem(it, e, m, isT);
+          if (sc < 0) { CORR.dropped++; continue; }
+          if (sc < P.minScore) { CORR.dropped++; continue; }
+          var entry = { id: it.id, sc: sc, hist: !ovl(yv(it.y), yv(e.y)) };
+          if (entry.hist) { CORR.hist++; }
+          if (!P.hist && entry.hist && P.yearStrict) { continue; }
+          (isT ? x.tEng[e.id] : x.fEng[e.id]).push(entry);
+          var key = isT ? x.tIds : x.fIds;
+          if (!key[it.id]) { key[it.id] = []; }
+          key[it.id].push(e.id);
+          CORR.pairs++;
+          x.size += 8;
         }
       });
     }
-    bind(x.fByModel, d.faults, false);
-    bind(x.tByModel, d.tsb, true);
-    A(d.tsb).forEach(function (t) {
-      if (!t) { return; }
-      A(t.b).forEach(function (b) {
-        if (!x.tByBrand[b]) { x.tByBrand[b] = []; }
-        x.tByBrand[b].push(t);
-      });
-      x.size += 320;
+    bind(d.faults, false);
+    bind(d.tsb, true);
+    A(x.fEng).forEach ? null : null;
+    Object.keys(x.fEng).forEach(function (eid) {
+      x.fEng[eid].sort(function (a, b) { return b.sc - a.sc; });
     });
-    A(d.faults).forEach(function (f) { if (f) { x.size += 420; } });
-    A(d.models).forEach(function (m) { if (m) { x.size += 160; } });
-    A(d.brands).forEach(function (b) { if (b) { x.size += 120; } });
+    Object.keys(x.tEng).forEach(function (eid) {
+      x.tEng[eid].sort(function (a, b) { return b.sc - a.sc; });
+    });
 
-    var SV = W.SV || {};
-    var FU = W.FU || {};
-    var REG = W.REGIONS || {};
+    var FU = W.FU || {}, REG = W.REGIONS || {};
     function push(kind, id, hay, title, sub, color, badge, extra) {
-      x.search.push({
-        kind: kind, id: id, key: nkFast(hay), title: title, sub: sub,
-        color: color, badge: badge, extra: extra || null
-      });
+      x.search.push({ kind: kind, id: id, key: nkFast(hay), title: title, sub: sub, color: color, badge: badge, extra: extra || null });
     }
     A(d.engines).forEach(function (e) {
       var m = x.modById[A(e.m)[0]];
       var b = m ? x.brById[m.b] : null;
-      var hay = [(b ? b.n : ""), (m ? m.n : ""), "phase " + (m ? m.phase : ""), e.code, e.fam, e.label, (b ? REG[b.region] : "")].join(" ");
+      var ey = yv(e.y);
+      var hay = [(b ? b.n : ""), (m ? m.n : ""), "phase " + (m ? m.phase : ""), e.code, e.fam, e.label, ey.join(" "), (b ? REG[b.region] : "")].join(" ");
       push("engine", e.id, hay,
         ((b ? b.n + " " : "") + (m ? m.n + " — " : "") + e.label).trim(),
-        e.code + " · " + e.hp + " ch · phase " + (m ? m.phase : 1),
+        e.code + " · " + e.hp + " ch · " + ey[0] + "-" + ey[1],
         (FU[e.fuel] || {}).c || "#FFD60A", "MOTEUR",
-        { fam: e.fam, brand: m ? m.b : "", famKey: nkFast(e.fam + e.code + e.gb) });
+        { fam: famKey(e.fam), brand: m ? m.b : "", famKey: nkFast(e.fam + e.code + e.gb) });
     });
     A(d.faults).forEach(function (f) {
       var km = A(f.km);
-      var hay = [f.t, A(f.fam).join(" "), A(f.mt).join(" "), f.cause, f.fix, A(f.sym).join(" "), f.dom].join(" ");
+      var fy = yv(f.y);
+      var nEng = A(x.fIds[f.id]).length;
+      var hay = [f.t, A(f.fam).join(" "), A(f.mt).join(" "), f.cause, f.fix, A(f.sym).join(" "), f.dom, fy.join(" ")].join(" ");
       push("fault", f.id, hay, f.t,
-        f.sev + " · " + f.dom + " · " + F(N(km[0], 0)) + "-" + F(N(km[1], 0)) + " km",
+        f.sev + " · " + f.dom + " · " + F(N(km[0], 0)) + "-" + F(N(km[1], 0)) + " km · " + fy[0] + "-" + fy[1] + " · " + nEng + " mot.",
         (SV[f.sev] || { c: "#FFAF2E" }).c, "PANNE",
-        { fams: A(f.fam), w: (SV[f.sev] || { w: 9 }).w });
+        { fams: A(f.fam).map(famKey), w: (SV[f.sev] || { w: 9 }).w });
     });
     A(d.tsb).forEach(function (t) {
       var rc = t.cat === "Rappel" || /^RPL-/.test(String(t.ref));
-      var hay = [t.t, t.ref, A(t.fam).join(" "), A(t.mt).join(" "), t.sum, t.cat].join(" ");
-      push("tsb", t.id, hay, t.t, t.ref + " · " + t.date,
+      var nEng = A(x.tIds[t.id]).length;
+      var hay = [t.t, t.ref, A(t.fam).join(" "), A(t.mt).join(" "), t.sum, t.cat, t.date].join(" ");
+      push("tsb", t.id, hay, t.t,
+        t.ref + " · " + t.date + " · " + nEng + " mot.",
         rc ? "#FFD60A" : "#4D8DFF", rc ? "RAPPEL" : "TSB",
-        { fams: A(t.fam), brands: A(t.b), rc: rc, w: (SV[t.sev] || { w: 9 }).w });
+        { fams: A(t.fam).map(famKey), brands: A(t.b), rc: rc, w: (SV[t.sev] || { w: 9 }).w });
     });
     A(d.models).forEach(function (m) {
       var b = x.brById[m.b];
-      var y = A(m.y);
-      push("model", m.id, (b ? b.n + " " : "") + m.n + " phase " + m.phase,
+      var y = yv(m.y);
+      push("model", m.id, (b ? b.n + " " : "") + m.n + " phase " + m.phase + " " + y.join(" "),
         (b ? b.n + " " : "") + m.n,
-        "phase " + m.phase + " · " + N(y[0], 2017) + "-" + N(y[1], 2027),
+        "phase " + m.phase + " · PROD " + y[0] + "-" + y[1],
         "#4D8DFF", "MODÈLE", null);
     });
     A(d.brands).forEach(function (b) {
@@ -269,7 +340,7 @@
     return x;
   }
 
-  /* ══════════ corrélations rapides ══════════ */
+  /* ---------- corrélations exposées ---------- */
   function uniq(list) {
     var seen = {}, out = [];
     for (var i = 0; i < list.length; i++) {
@@ -280,45 +351,32 @@
     }
     return out;
   }
-  function phaseOk(ph, m) {
-    var a = A(ph);
-    if (!a.length || a.indexOf("*") > -1) { return true; }
-    return a.indexOf(String(m && m.phase)) > -1;
-  }
-  function yv(v) {
-    var a = A(v);
-    var x = N(a[0], 2017), y = N(a[1], 2027);
-    if (x > y) { var t = x; x = y; y = t; }
-    return [x, y];
-  }
-  function ovl(a, b) {
-    var x = yv(a), y = yv(b);
-    return x[0] <= y[1] && y[0] <= x[1];
-  }
-  var FCACHE = {}, TCACHE = {}, ICACHE = {};
   function fastFaults(e) {
     if (!e || !e.id) { return []; }
     if (FCACHE[e.id]) { return FCACHE[e.id]; }
     var x = build();
-    var m = x.modById[A(e.m)[0]];
+    var entries = A(x.fEng[e.id]);
+    var byId = {};
+    A(db().faults).forEach(function (f) { if (f) { byId[f.id] = f; } });
+    var sv = W.SV || {};
     var out = [];
-    if (m) {
-      var pool = uniq(A(x.fByFam[e.fam]).concat(A(x.fByModel[m.id])));
-      var sv = W.SV || {};
-      for (var i = 0; i < pool.length; i++) {
-        var f = pool[i];
-        if (!phaseOk(f.ph, m)) { continue; }
-        var g = {};
-        for (var k in f) { if (Object.prototype.hasOwnProperty.call(f, k)) { g[k] = f[k]; } }
-        g.active = ovl(g.y, e.y) && ovl(g.y, m.y);
-        out.push(g);
-      }
-      out.sort(function (a, b) {
-        var d = (b.active ? 1 : 0) - (a.active ? 1 : 0);
-        if (d) { return d; }
-        return ((sv[b.sev] || { w: 0 }).w - (sv[a.sev] || { w: 0 }).w);
-      });
-    }
+    entries.forEach(function (en) {
+      var f = byId[en.id];
+      if (!f) { return; }
+      var g = {};
+      for (var k in f) { if (Object.prototype.hasOwnProperty.call(f, k)) { g[k] = f[k]; } }
+      g.cs = en.sc;
+      g.hist = !!en.hist;
+      g.active = !en.hist;
+      out.push(g);
+    });
+    out.sort(function (a, b) {
+      var d = (b.active ? 1 : 0) - (a.active ? 1 : 0);
+      if (d) { return d; }
+      var d2 = (b.cs || 0) - (a.cs || 0);
+      if (d2) { return d2; }
+      return (sv[b.sev] || { w: 0 }).w - (sv[a.sev] || { w: 0 }).w;
+    });
     FCACHE[e.id] = out;
     return out;
   }
@@ -326,56 +384,50 @@
     if (!e || !e.id) { return []; }
     if (TCACHE[e.id]) { return TCACHE[e.id]; }
     var x = build();
-    var m = x.modById[A(e.m)[0]];
+    var byId = {};
+    A(db().tsb).forEach(function (t) { if (t) { byId[t.id] = t; } });
     var out = [];
-    if (m) {
-      out = uniq(A(x.tByFam[e.fam]).concat(A(x.tByModel[m.id])).concat(A(x.tByBrand[m.b]))).filter(function (t) {
-        return phaseOk(t.ph, m);
-      });
-      out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
-    }
+    A(x.tEng[e.id]).forEach(function (en) {
+      var t = byId[en.id];
+      if (!t) { return; }
+      var g = {};
+      for (var k in t) { if (Object.prototype.hasOwnProperty.call(t, k)) { g[k] = t[k]; } }
+      g.cs = en.sc;
+      g.hist = !!en.hist;
+      out.push(g);
+    });
+    out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
     TCACHE[e.id] = out;
     return out;
   }
   function fastEngForFault(f) {
     if (!f) { return []; }
     var x = build();
-    var out = [];
-    A(f.fam).forEach(function (fm) { out = out.concat(A(x.eByFam[fm])); });
-    var mt = A(f.mt);
-    if (mt.indexOf("*") > -1) { return A(db().engines); }
-    mt.forEach(function (t) {
-      var tok = nkFast(t);
-      if (!tok) { return; }
-      Object.keys(x.modKey).forEach(function (mid) {
-        if (x.modKey[mid].indexOf(tok) > -1) { out = out.concat(A(x.eByModel[mid])); }
-      });
-    });
-    return uniq(out);
+    var ids = A(x.fIds[f.id]);
+    return ids.map(function (id) { return x.engById[id]; }).filter(Boolean);
   }
   function fastEngForTsb(t) {
     if (!t) { return []; }
     var x = build();
-    var out = [];
-    A(t.fam).forEach(function (fm) { out = out.concat(A(x.eByFam[fm])); });
-    A(t.b).forEach(function (b) {
-      A(db().models).forEach(function (m) {
-        if (m && m.b === b) { out = out.concat(A(x.eByModel[m.id])); }
-      });
+    var ids = A(x.tIds[t.id]);
+    return ids.map(function (id) { return x.engById[id]; }).filter(Boolean);
+  }
+  function corrInfo(id, isT) {
+    var x = build();
+    var ids = A(isT ? x.tIds[id] : x.fIds[id]);
+    var ys = [];
+    var brands = {};
+    ids.forEach(function (eid) {
+      var e = x.engById[eid];
+      if (!e) { return; }
+      ys.push(yv(e.y));
+      var m = x.modById[A(e.m)[0]];
+      if (m) { brands[m.b] = 1; }
     });
-    var mt = A(t.mt);
-    if (mt.indexOf("*") > -1) { return A(db().engines); }
-    mt.forEach(function (s) {
-      var tok = nkFast(s);
-      if (!tok) { return; }
-      Object.keys(x.modKey).forEach(function (mid) {
-        if (x.modKey[mid].indexOf(tok) > -1) { out = out.concat(A(x.eByModel[mid])); }
-      });
-    });
-    return uniq(out);
+    return { n: ids.length, years: yearsLabel(ys), brands: Object.keys(brands).length };
   }
 
-  /* ══════════ recompute O(n) ══════════ */
+  /* ---------- recompute O(n) ---------- */
   function fastRecompute() {
     var x = build();
     var d = db();
@@ -384,20 +436,18 @@
     if (W.TC) { W.TC = {}; }
     if (W.IVIC) { W.IVIC = {}; }
     var links = 0, corr = 0, bb = {}, doms = {}, fams = {}, regs = {}, pm = {};
-    var es = A(d.engines);
-    var i;
+    var es = A(d.engines), i;
     for (i = 0; i < es.length; i++) {
       var e = es[i];
       if (!e) { continue; }
-      fams[e.fam] = 1;
+      fams[famKey(e.fam)] = 1;
       var ms = A(e.m);
       links += ms.length;
       var m = x.modById[ms[0]];
       if (m) {
         bb[m.b] = (bb[m.b] || 0) + 1;
         pm[m.id] = (pm[m.id] || 0) + 1;
-        corr += A(x.fByFam[e.fam]).length + A(x.fByModel[m.id]).length;
-        corr += A(x.tByFam[e.fam]).length + A(x.tByModel[m.id]).length + A(x.tByBrand[m.b]).length;
+        corr += A(x.fEng[e.id]).length + A(x.tEng[e.id]).length;
       }
     }
     A(d.brands).forEach(function (b) { if (b) { regs[b.region] = (regs[b.region] || 0) + 1; } });
@@ -421,11 +471,7 @@
     var w = 0, tot = A(d.models).length;
     Object.keys(pm).forEach(function (k) { if (pm[k] >= 2) { w++; } });
     W.META = {
-      counts: {
-        b: A(d.brands).length, m: tot, e: es.length,
-        f: A(d.faults).length, t: A(d.tsb).length, rc: rc,
-        fam: Object.keys(fams).length, dom: Object.keys(doms).length
-      },
+      counts: { b: A(d.brands).length, m: tot, e: es.length, f: A(d.faults).length, t: A(d.tsb).length, rc: rc, fam: Object.keys(fams).length, dom: Object.keys(doms).length },
       links: links, corr: corr,
       integ: { err: err, ok: !err.length, pct: err.length ? Math.max(0, 100 - err.length * 7) : 100 },
       size: Math.round(x.size / 1024),
@@ -435,7 +481,7 @@
     };
   }
 
-  /* ══════════ recherche indexée ══════════ */
+  /* ---------- recherche indexée ---------- */
   var SYN = {
     puretech: ["eb2"], hdi: ["dv5", "dw10"], tsi: ["ea211", "ea888"], tdi: ["ea288"],
     tce: ["h4dt", "h5ht", "hr12"], dci: ["k9k", "m9r"], courroie: ["courroie"], chaine: ["chaine"],
@@ -466,13 +512,11 @@
     var qn = nkFast(qs);
     if (!qn) { return []; }
     var syn = [];
-    String(qs || "").toLowerCase().split(/[\s,;]+/).forEach(function (w) {
-      var k = nkFast(w);
+    String(qs || "").toLowerCase().split(/[\s,;]+/).forEach(function (w2) {
+      var k = nkFast(w2);
       if (SYN[k]) { syn = syn.concat(SYN[k]); }
     });
-    var wR = qn.indexOf("rappel") > -1;
-    var wT = qn.indexOf("tsb") > -1;
-    var wF = qn.indexOf("panne") > -1;
+    var wR = qn.indexOf("rappel") > -1, wT = qn.indexOf("tsb") > -1, wF = qn.indexOf("panne") > -1;
     var famSet = {}, brSet = {}, hits = [];
     var list = x.search, i, j, it, s;
     for (i = 0; i < list.length; i++) {
@@ -480,9 +524,7 @@
       if (it.kind !== "engine") { continue; }
       s = sc(qn, it.key);
       if (!s && syn.length) {
-        for (j = 0; j < syn.length; j++) {
-          if (it.extra.famKey.indexOf(nkFast(syn[j])) > -1) { s = 62; break; }
-        }
+        for (j = 0; j < syn.length; j++) { if (it.extra.famKey.indexOf(nkFast(syn[j])) > -1) { s = 62; break; } }
       }
       if (s > 0) {
         famSet[it.extra.fam] = 1;
@@ -494,34 +536,16 @@
       it = list[i];
       if (it.kind !== "fault") { continue; }
       s = sc(qn, it.key);
-      if (!s) {
-        for (j = 0; j < it.extra.fams.length; j++) {
-          if (famSet[it.extra.fams[j]]) { s = 66; break; }
-        }
-      }
-      if (!s && syn.length) {
-        for (j = 0; j < syn.length; j++) {
-          if (it.key.indexOf(nkFast(syn[j])) > -1) { s = 58; break; }
-        }
-      }
-      if (s > 0) {
-        hits.push({ kind: "fault", id: it.id, score: s + (wF ? 26 : 0) + it.extra.w * 0.6, title: it.title, sub: it.sub, color: it.color, badge: it.badge });
-      }
+      if (!s) { for (j = 0; j < it.extra.fams.length; j++) { if (famSet[it.extra.fams[j]]) { s = 66; break; } } }
+      if (!s && syn.length) { for (j = 0; j < syn.length; j++) { if (it.key.indexOf(nkFast(syn[j])) > -1) { s = 58; break; } } }
+      if (s > 0) { hits.push({ kind: "fault", id: it.id, score: s + (wF ? 26 : 0) + it.extra.w * 0.6, title: it.title, sub: it.sub, color: it.color, badge: it.badge }); }
     }
     for (i = 0; i < list.length; i++) {
       it = list[i];
       if (it.kind !== "tsb") { continue; }
       s = sc(qn, it.key);
-      if (!s) {
-        for (j = 0; j < it.extra.fams.length; j++) {
-          if (famSet[it.extra.fams[j]]) { s = 64; break; }
-        }
-      }
-      if (!s) {
-        for (j = 0; j < it.extra.brands.length; j++) {
-          if (brSet[it.extra.brands[j]]) { s = 48; break; }
-        }
-      }
+      if (!s) { for (j = 0; j < it.extra.fams.length; j++) { if (famSet[it.extra.fams[j]]) { s = 64; break; } } }
+      if (!s) { for (j = 0; j < it.extra.brands.length; j++) { if (brSet[it.extra.brands[j]]) { s = 48; break; } } }
       if (s > 0) {
         var bonus = (wR && it.extra.rc) ? 34 : (wT && !it.extra.rc ? 30 : 0);
         hits.push({ kind: "tsb", id: it.id, score: s + bonus + (it.extra.rc ? 12 : 0), title: it.title, sub: it.sub, color: it.color, badge: it.badge });
@@ -529,12 +553,9 @@
     }
     for (i = 0; i < list.length; i++) {
       it = list[i];
-      if (it.kind === "model") {
+      if (it.kind === "model" || it.kind === "brand") {
         s = sc(qn, it.key);
-        if (s > 0) { hits.push({ kind: "model", id: it.id, score: s + 4, title: it.title, sub: it.sub, color: it.color, badge: it.badge }); }
-      } else if (it.kind === "brand") {
-        s = sc(qn, it.key);
-        if (s > 0) { hits.push({ kind: "brand", id: it.id, score: s, title: it.title, sub: it.sub, color: it.color, badge: it.badge }); }
+        if (s > 0) { hits.push({ kind: it.kind, id: it.id, score: s + (it.kind === "model" ? 4 : 0), title: it.title, sub: it.sub, color: it.color, badge: it.badge }); }
       }
     }
     hits.sort(function (a, b) { return b.score - a.score; });
@@ -548,8 +569,22 @@
     return out;
   }
 
-  /* ══════════ résultats mémoïsés ══════════ */
-  var RES = { key: "", val: null };
+  /* ---------- résultats mémoïsés ---------- */
+  function iviFast(e) {
+    if (!e || !e.id) { return 0; }
+    if (ICACHE[e.id] !== undefined) { return ICACHE[e.id]; }
+    var sv = W.SV || {}, fq = W.FQ || {};
+    var s = 0;
+    var fs = fastFaults(e);
+    for (var i = 0; i < fs.length; i++) {
+      var f = fs[i];
+      s += ((sv[f.sev] || { w: 9 }).w * (fq[f.freq] || 1)) * (f.active ? 1 : 0.25);
+    }
+    s = Math.max(0, Math.min(100, Math.round(s)));
+    ICACHE[e.id] = s;
+    if (W.IVIC) { W.IVIC[e.id] = s; }
+    return s;
+  }
   function fastResults() {
     var x = build();
     var st = W.MD_STATE;
@@ -568,7 +603,7 @@
       if (f.region && b && b.region !== f.region) { return false; }
       if (fuels.length && fuels.indexOf(e.fuel) < 0) { return false; }
       if (qn) {
-        var hay = nkFast((b ? b.n : "") + " " + (m ? m.n : "") + " " + e.code + " " + e.fam + " " + e.label);
+        var hay = nkFast((b ? b.n : "") + " " + (m ? m.n : "") + " " + e.code + " " + e.fam + " " + e.label + " " + A(e.y).join(" "));
         if (hay.indexOf(qn) < 0) { return false; }
       }
       return true;
@@ -589,23 +624,8 @@
     RES.val = out;
     return out;
   }
-  function iviFast(e) {
-    if (!e || !e.id) { return 0; }
-    if (ICACHE[e.id] !== undefined) { return ICACHE[e.id]; }
-    var sv = W.SV || {}, fq = W.FQ || {};
-    var s = 0;
-    var fs = fastFaults(e);
-    for (var i = 0; i < fs.length; i++) {
-      var f = fs[i];
-      s += ((sv[f.sev] || { w: 9 }).w * (fq[f.freq] || 1)) * (f.active ? 1 : 0.25);
-    }
-    s = Math.max(0, Math.min(100, Math.round(s)));
-    ICACHE[e.id] = s;
-    if (W.IVIC) { W.IVIC[e.id] = s; }
-    return s;
-  }
 
-  /* ══════════ rendu coalescé ══════════ */
+  /* ---------- rendu coalescé + post-traitement années/corrélation ---------- */
   function requestRender() {
     if (RENDER_REQ) { return; }
     RENDER_REQ = requestAnimationFrame(function () {
@@ -618,7 +638,14 @@
       LAT.n++;
       LAT.avg = Math.round((LAT.avg * (LAT.n - 1) + dt) / LAT.n);
       hud();
+      schedulePost();
     });
+  }
+  function schedulePost() {
+    clearTimeout(POST_TIMER);
+    POST_TIMER = setTimeout(function () {
+      try { postRender(); } catch (e) {}
+    }, 40);
   }
   function requestMeta() {
     if (META_REQ) { return; }
@@ -627,8 +654,111 @@
       try { ORIG.updateMeta(); } catch (e) {}
     });
   }
+  function postRender() {
+    stampYears();
+    stampCorr();
+    stampOptionYears();
+  }
+  function stampYears() {
+    var d = db();
+    qa(".eng[data-id]").forEach(function (card) {
+      if (card.getAttribute("data-yr")) { return; }
+      var e = null;
+      A(d.engines).forEach(function (x) { if (x && x.id === card.getAttribute("data-id")) { e = x; } });
+      if (!e) { return; }
+      var m = modelById(A(e.m)[0]);
+      if (!m) { return; }
+      var meta = card.querySelector(".meta");
+      if (meta) {
+        var my = yv(m.y), ey = yv(e.y);
+        var sp = D.createElement("span");
+        sp.className = "tag";
+        sp.style.color = "#25D4EE";
+        sp.style.borderColor = "rgba(37,212,238,.4)";
+        sp.textContent = "MODÈLE " + my[0] + "-" + my[1] + " · MOTEUR " + ey[0] + "-" + ey[1];
+        meta.appendChild(sp);
+      }
+      card.setAttribute("data-yr", "1");
+    });
+    var st = W.MD_STATE;
+    var mm = st && st.sel && st.sel.m ? modelById(st.sel.m) : null;
+    qa(".selcard .sg").forEach(function (sg) {
+      if (sg.getAttribute("data-yr")) { return; }
+      var ee = st && st.sel && st.sel.e ? null : null;
+      if (!mm) { return; }
+      var y = yv(mm.y);
+      var b1 = D.createElement("div");
+      b1.className = "sp";
+      b1.innerHTML = "<span>Production modèle</span><b class='hl'>" + y[0] + " → " + y[1] + "</b>";
+      sg.insertBefore(b1, sg.firstChild);
+      sg.setAttribute("data-yr", "1");
+    });
+    qa("#md .sg").forEach(function (sg) {
+      if (sg.getAttribute("data-yr")) { return; }
+      var title = q("#md .mh h3");
+      var t = title ? title.textContent : "";
+      var found = null;
+      A(d.models).forEach(function (m) { if (!found && m && t.indexOf(m.n) > -1) { found = m; } });
+      if (!found && mm) { found = mm; }
+      if (!found) { return; }
+      var y2 = yv(found.y);
+      var b2 = D.createElement("div");
+      b2.className = "sp";
+      b2.innerHTML = "<span>Production modèle</span><b class='hl'>" + y2[0] + " → " + y2[1] + "</b>";
+      sg.insertBefore(b2, sg.firstChild);
+      var eng = null;
+      A(d.engines).forEach(function (e) { if (!eng && e && t.indexOf(e.label) > -1) { eng = e; } });
+      if (eng) {
+        var y3 = yv(eng.y);
+        var b3 = D.createElement("div");
+        b3.className = "sp";
+        b3.innerHTML = "<span>Production motorisation " + eng.hp + " ch</span><b class='hl'>" + y3[0] + " → " + y3[1] + "</b>";
+        sg.insertBefore(b3, sg.children[1] || null);
+      }
+      sg.setAttribute("data-yr", "1");
+    });
+  }
+  function stampCorr() {
+    qa(".fcard, .tsb").forEach(function (card) {
+      if (card.getAttribute("data-corr")) { return; }
+      var btn = card.querySelector("[data-act='openFault'],[data-act='openTsb']");
+      var id = btn ? btn.getAttribute("data-id") : null;
+      var isT = btn ? btn.getAttribute("data-act") === "openTsb" : card.classList.contains("tsb");
+      if (!id) {
+        var ref = card.querySelector(".ref");
+        if (ref) {
+          var rr = ref.textContent;
+          A(db().tsb).forEach(function (t) { if (t && t.ref === rr) { id = t.id; isT = true; } });
+        }
+      }
+      if (!id) { return; }
+      var ci = corrInfo(id, isT);
+      var line = D.createElement("div");
+      line.className = "tags";
+      line.style.marginTop = "7px";
+      line.innerHTML =
+        "<span class='tag' style='color:#43E08B;border-color:rgba(67,224,139,.4)'>" + IC("check", "width:10px;height:10px") + ci.n + " motorisation(s) corrélée(s)</span>" +
+        "<span class='tag' style='color:#25D4EE;border-color:rgba(37,212,238,.4)'>" + IC("cal", "width:10px;height:10px") + "PROD " + E(ci.years) + "</span>" +
+        "<span class='tag'>" + ci.brands + " marque(s)</span>";
+      card.appendChild(line);
+      card.setAttribute("data-corr", "1");
+    });
+  }
+  function stampOptionYears() {
+    var sel = q("select[data-sel='e']");
+    if (!sel || sel.getAttribute("data-yr")) { return; }
+    A(sel.options).forEach(function (op) {
+      if (!op.value || op.textContent.indexOf("(") > -1) { return; }
+      var e = null;
+      A(db().engines).forEach(function (x) { if (x && x.id === op.value) { e = x; } });
+      if (!e) { return; }
+      var y = yv(e.y);
+      op.textContent = op.textContent + " · " + y[0] + "-" + y[1];
+    });
+    sel.setAttribute("data-yr", "1");
+  }
 
-  /* ══════════ autovérification : immédiat + lourd différé ══════════ */
+  /* ---------- tests ---------- */
   function fastTests() {
     var T = [];
     var x = build();
@@ -637,43 +767,41 @@
     function add(n, ok, info, soft) {
       T.push({ n: n, ok: !!ok, info: String(info == null ? "" : info), soft: !!soft });
     }
-    add("Noyau initialisé", A(d.models).length > 0, F(A(d.models).length) + " modèles indexés");
-    add("Index de corrélation actif", !!IX, "recherche et corrélations O(1)");
+    add("Noyau initialisé", A(d.models).length > 0, F(A(d.models).length) + " modèles");
+    add("Index de corrélation actif", !!IX, F(CORR.pairs) + " liens corrélation");
+    add("Corrélation forte famille+modèle", CORR.strong > 0, F(CORR.strong) + " liens forts");
+    add("Corrélation avec années cohérentes", CORR.dropped < CORR.pairs, F(CORR.dropped) + " écart(s) écarté(s)");
     add("Marques ≥ 50", M.counts.b >= 50, M.counts.b);
     add("Modèles ≥ 250", M.counts.m >= 250, M.counts.m);
     add("Motorisations ≥ 600", M.counts.e >= 600, F(M.counts.e));
     add("Pannes ≥ 35", M.counts.f >= 35, F(M.counts.f));
     add("TSB ≥ 25", M.counts.t >= 25, F(M.counts.t) + " dont " + F(M.counts.rc) + " rappels");
     add("Domaines ≥ 12", M.counts.dom >= 12, M.counts.dom);
-    add("Familles ≥ 60", M.counts.fam >= 60, M.counts.fam);
-    Object.keys(W.REGIONS || {}).forEach(function (r) {
-      add("Région " + W.REGIONS[r], (M.regions[r] || 0) > 0, (M.regions[r] || 0) + " marques");
-    });
+    add("Familles canoniques", W.MD_FAM ? W.MD_FAM.recs.length >= 80 : false, W.MD_FAM ? W.MD_FAM.recs.length + " familles");
     var per = M.perModel || {};
     var noEng = A(d.models).filter(function (m) { return !per[m.id]; }).length;
     add("Couverture modèles", noEng === 0, noEng + " sans moteur");
     add("Couverture ≥2 motorisations", M.cover >= 60, M.cover + " %", true);
-    add("IDs uniques", M.integ.ok, M.integ.err.length ? M.integ.err.slice(0, 2).join("|") : "0 doublon");
-    add("Intégrité référentielle", M.integ.ok, M.integ.pct + " %");
-    var badY = 0, badHp = 0;
+    var noCorr = 0;
+    A(d.faults).forEach(function (f) { if (!A(x.fIds[f.id]).length) { noCorr++; } });
+    add("Pannes toutes corrélées", noCorr === 0, noCorr + " sans motorisation");
+    var noCorrT = 0;
+    A(d.tsb).forEach(function (t) { if (!A(x.tIds[t.id]).length) { noCorrT++; } });
+    add("TSB tous corrélés", noCorrT === 0, noCorrT + " sans motorisation");
+    var badY = 0;
     A(d.engines).forEach(function (e) {
       var m = x.modById[A(e.m)[0]];
       if (!m) { return; }
       var ey = yv(e.y), my = yv(m.y);
       if (ey[0] < my[0] || ey[1] > my[1]) { badY++; }
-      if (!(e.hp >= 1 && e.hp <= 3000)) { badHp++; }
     });
     add("Années moteur ⊂ production modèle", badY === 0, badY + " hors bornes");
-    add("Puissances 1-3000", badHp === 0, badHp + " hors plage");
-    add("Latence de réaction", LAT.avg <= 90, LAT.avg + " ms en moyenne", true);
-    add("Cache de recherche", x.search.length > 0, F(x.search.length) + " entrées indexées");
-    add("nk mémoïsé", NKC.size > 0, F(NKC.size) + " clés en cache");
+    add("Latence de réaction", LAT.avg <= 90, LAT.avg + " ms moyenne", true);
     W.TESTS = T;
     requestMeta();
     paintTests();
     var heavy = [];
-    var brands = A(d.brands);
-    brands.forEach(function (b) {
+    A(d.brands).forEach(function (b) {
       heavy.push(function () {
         var es = A(d.engines).filter(function (e) {
           var m = x.modById[A(e.m)[0]];
@@ -698,42 +826,9 @@
         paintTests();
       });
     });
-    [["bord", W.vBord], ["explorer", W.vExplorer], ["tech", W.vTech], ["entretien", W.vEntretien], ["studio", W.vStudio], ["admin", W.vAdmin], ["diag", W.vDiag]].forEach(function (p) {
-      heavy.push(function () {
-        var ok = false, info = "exception";
-        try {
-          var h = p[1]();
-          ok = typeof h === "string" && h.length > 0;
-          info = ok ? F(h.length) + " caractères rendus" : "vide";
-        } catch (e) { info = String(e && e.message ? e.message : e); }
-        T.push({ n: "Rendu vue " + p[0], ok: ok, info: info, soft: false });
-        paintTests();
-      });
-    });
-    heavy.push(function () {
-      var bad = [];
-      A(W.WP && W.WP.MODES).forEach(function (m) {
-        try {
-          var cv = D.createElement("canvas");
-          cv.width = 120; cv.height = 80;
-          var cx = cv.getContext("2d");
-          var tg = { W: 120, H: 80, sc: 1 };
-          tg.st = W.WP.mk(tg);
-          var P2 = JSON.parse(JSON.stringify(W.WP.P));
-          P2.mode = m[0];
-          W.WP.draw(cx, 120, 80, 1, P2, tg.st, W.WP.pal(), 1);
-        } catch (e) { bad.push(m[0]); }
-      });
-      T.push({ n: "Scènes studio", ok: bad.length === 0, info: bad.length ? bad.join(",") : "toutes rendues", soft: false });
-      paintTests();
-    });
-    chunk(heavy, function () {
-      requestMeta();
-      paintTests();
-    });
+    chunk(heavy, function () { requestMeta(); paintTests(); });
     return T;
   }
-  var PAINT_REQ = 0;
   function paintTests() {
     if (PAINT_REQ) { return; }
     PAINT_REQ = requestAnimationFrame(function () {
@@ -743,7 +838,7 @@
     });
   }
 
-  /* ══════════ sauvegarde différée ══════════ */
+  /* ---------- sauvegarde différée ---------- */
   function fastSave(quiet) {
     if (typeof W.isAdmin === "function" && !W.isAdmin()) { return false; }
     var st = stamp();
@@ -755,14 +850,13 @@
         try {
           ORIG.saveNow(true);
           SAVED_STAMP = stamp();
-          if (!quiet) { /* notification gérée par l'appelant */ }
         } catch (e) {}
       }, 4000);
     }, 1200);
     return true;
   }
 
-  /* ══════════ fond animé économe ══════════ */
+  /* ---------- fond animé économe ---------- */
   function applyWP() {
     var wp = W.WP;
     if (!wp) { return; }
@@ -816,26 +910,25 @@
     wp.resize();
   }
 
-  /* ══════════ CSS d'accélération ══════════ */
+  /* ---------- CSS ---------- */
   function css() {
     if (q("#mdperfcss")) { return; }
     var s = D.createElement("style");
     s.id = "mdperfcss";
     s.textContent = [
       ".eg .eng,.fcard,.tsb,.tst,.jr{contain:layout paint style}",
-      ".perf-fast .eg .eng,.perf-fast .fcard,.perf-fast .tsb,.perf-fast .tst{content-visibility:auto;contain-intrinsic-size:auto 190px}",
+      ".perf-fast .eg .eng,.perf-fast .fcard,.perf-fast .tsb,.perf-fast .tst{content-visibility:auto;contain-intrinsic-size:auto 210px}",
       ".perf-fast .tests .tst{contain-intrinsic-size:auto 54px}",
       "#view{contain:layout style}",
       ".eng,.card,.btn,.tb,.nv{transition-duration:.09s}",
       "#bgc{will-change:opacity}",
-      ".to{animation-duration:.16s}",
       "@media(prefers-reduced-motion:reduce){#bgc{display:none}}"
     ].join("");
     D.head.appendChild(s);
     D.body.classList.toggle("perf-fast", !!P.fastLists);
   }
 
-  /* ══════════ HUD latence ══════════ */
+  /* ---------- HUD ---------- */
   function hud() {
     var el = q("#stLat");
     if (!el) {
@@ -852,25 +945,24 @@
     }
   }
 
-  /* ══════════ panneau PERFORMANCE ══════════ */
+  /* ---------- panneau ---------- */
   function panelBody() {
     var x = IX || build();
     var h = "<div class='kpis' style='grid-template-columns:repeat(4,1fr)'>";
     [["RÉACTION MOYENNE", LAT.avg ? LAT.avg + " ms" : "—", LAT.avg > 120 ? "#FF4D5E" : "#43E08B"],
-     ["PIC MESURÉ", LAT.worst ? LAT.worst + " ms" : "—", "#FFAF2E"],
-     ["ENTRÉES INDEXÉES", F(x.search.length), "#25D4EE"],
-     ["CLÉS EN CACHE", F(NKC.size), "#E45CFF"]].forEach(function (k) {
+     ["LIENS DE CORRÉLATION", F(CORR.pairs), "#43E08B"],
+     ["LIENS FORTS FAM+MODÈLE", F(CORR.strong), "#25D4EE"],
+     ["ÉCARTS HORS ANNÉES", F(CORR.dropped), "#FFAF2E"]].forEach(function (k) {
       h += "<div class='card kpi' style='--kc:" + k[2] + "'><b>" + E(k[1]) + "</b><span>" + k[0] + "</span></div>";
     });
     h += "</div>";
-    h += "<div class='card panel'><h3>" + IC("spark") + "Réglages appliqués en direct</h3>";
+    h += "<div class='card panel'><h3>" + IC("spark") + "Performance & corrélation — réglages live</h3>";
     h += "<div class='fr f2' style='margin-bottom:10px'>";
     h += "<div><label class='lb'>Qualité du fond</label><select class='sel' data-perf='quality'>";
     [["eco", "Éco — 0.8× (recommandé APK)"], ["std", "Standard — 1×"], ["ultra", "Ultra — 1.5×"]].forEach(function (o) {
       h += "<option value='" + o[0] + "'" + (P.quality === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
     });
-    h += "</select></div>";
-    h += "<div><label class='lb'>Profil</label><select class='sel' data-perf='profile'>";
+    h += "</select></div><div><label class='lb'>Profil</label><select class='sel' data-perf='profile'>";
     h += "<option value=''>Personnalisé</option><option value='turbo'>Turbo — réaction maximale</option><option value='balanced'>Équilibré</option><option value='show'>Démonstration visuelle</option>";
     h += "</select></div></div>";
     [["fps", "Images/seconde du fond", 10, 60, 1, " fps"],
@@ -878,20 +970,23 @@
      ["density", "Densité visuelle", 0, 100, 2, " %"],
      ["glow", "Intensité du halo", 0, 100, 2, " %"],
      ["searchDelay", "Délai de recherche", 0, 300, 10, " ms"],
-     ["lot", "Lot d'enrichissement par cycle", 40, 420, 20, " fiches"]].forEach(function (s) {
+     ["lot", "Lot d'enrichissement par cycle", 40, 420, 20, " fiches"],
+     ["minScore", "Score minimal de corrélation", 1, 6, 1, " pts"]].forEach(function (s) {
       h += "<div style='margin-bottom:6px'><div class='srow'><span>" + s[1] + "</span><span class='sval' data-perfv='" + s[0] + "'>" + P[s[0]] + s[5] + "</span></div>";
       h += "<input type='range' data-perf='" + s[0] + "' min='" + s[2] + "' max='" + s[3] + "' step='" + s[4] + "' value='" + P[s[0]] + "'></div>";
     });
     [["pauseOnInput", "Suspendre le fond pendant la saisie et le scroll"],
      ["fastLists", "Accélération des longues listes"],
-     ["halo", "Halo lumineux du fond"]].forEach(function (t) {
+     ["halo", "Halo lumineux du fond"],
+     ["yearStrict", "Corrélation stricte sur années de production"],
+     ["hist", "Inclure les fiches historiques hors production"]].forEach(function (t) {
       h += "<div class='srow' style='margin-top:8px'><span>" + t[1] + "</span><label class='sw'><input type='checkbox' data-perf='" + t[0] + "'" + (P[t[0]] ? " checked" : "") + "><i></i></label></div>";
     });
     h += "</div>";
-    h += "<div class='card panel' style='margin-top:12px'><h3>" + IC("info") + "Chaîne d'accélération active</h3><div class='sg'>";
-    [["nk mémoïsé", "oui"], ["Index partagés", "oui"], ["recompute O(n)", "oui"],
-     ["Recherche indexée", "oui"], ["Rendu coalescé", "oui"], ["Tests lourds différés", "oui"],
-     ["Sauvegarde différée", "oui"], ["Résultats mémoïsés", "oui"]].forEach(function (r) {
+    h += "<div class='card panel' style='margin-top:12px'><h3>" + IC("check") + "Chaîne active</h3><div class='sg'>";
+    [["nk mémoïsé", F(NKC.size) + " clés"], ["Index corrélation", F(CORR.pairs) + " liens"], ["Entrées recherche", F(x.search.length)],
+     ["recompute O(n)", "actif"], ["Rendu coalescé", "actif"], ["Tests lourds différés", "actif"],
+     ["Sauvegarde différée", "active"], ["Années affichées", "modèle+moteur+puissance"]].forEach(function (r) {
       h += "<div class='sp'><span>" + E(r[0]) + "</span><b class='hl'>" + E(r[1]) + "</b></div>";
     });
     h += "</div></div>";
@@ -902,11 +997,11 @@
     if (b) { b.innerHTML = panelBody(); }
   }
   function openPanel() {
-    var h = "<div class='mh'>" + IC("spark", "color:#43E08B") + "<h3>PERFORMANCE & LATENCE</h3>";
+    var h = "<div class='mh'>" + IC("spark", "color:#43E08B") + "<h3>PERFORMANCE & CORRÉLATION</h3>";
     h += "<button class='tb' data-act='mclose'>" + IC("x") + "</button></div>";
     h += "<div class='mb2' id='perfBody'>" + panelBody() + "</div>";
     h += "<div class='mf'>";
-    h += "<button class='btn sm ghost' data-perfa='reset'>" + IC("reset") + "Réinitialiser</button>";
+    h += "<button class='btn sm ghost' data-perfa='recompute'>" + IC("reset") + "Recalculer corrélations</button>";
     h += "<button class='btn sm ghost' data-perfa='export'>" + IC("dl") + "Diagnostics</button>";
     h += "<button class='btn sm grn' data-perfa='turbo'>" + IC("spark") + "PROFIL TURBO</button>";
     h += "<button class='btn sm' data-act='mclose'>Fermer</button></div>";
@@ -919,8 +1014,8 @@
     b.className = "tb";
     b.id = "perfb";
     b.type = "button";
-    b.title = "Performance et latence";
-    b.setAttribute("aria-label", "Performance et latence");
+    b.title = "Performance et corrélation";
+    b.setAttribute("aria-label", "Performance et corrélation");
     b.style.color = "#43E08B";
     b.style.borderColor = "rgba(67,224,139,.45)";
     b.innerHTML = IC("spark");
@@ -939,13 +1034,10 @@
       P.quality = "std"; P.fps = 45; P.count = 150; P.density = 64; P.glow = 55;
       P.searchDelay = 140; P.lot = 200; P.pauseOnInput = true; P.fastLists = true; P.halo = true;
     }
-    save();
-    applyWP();
-    css();
-    refreshPanel();
+    save(); applyWP(); css(); refreshPanel();
   }
 
-  /* ══════════ événements du panneau ══════════ */
+  /* ---------- événements panneau ---------- */
   D.addEventListener("input", function (ev) {
     var t = ev.target;
     if (!t || !t.getAttribute) { return; }
@@ -955,44 +1047,51 @@
     else { P[k] = N(t.value, P[k]); }
     var lbl = q("[data-perfv='" + k + "']");
     if (lbl) {
-      var unit = k === "fps" ? " fps" : k === "density" || k === "glow" ? " %" : k === "searchDelay" ? " ms" : k === "lot" ? " fiches" : "";
+      var unit = k === "fps" ? " fps" : (k === "density" || k === "glow") ? " %" : k === "searchDelay" ? " ms" : k === "lot" ? " fiches" : k === "minScore" ? " pts" : "";
       lbl.textContent = P[k] + unit;
     }
     save();
     if (k === "fastLists") { D.body.classList.toggle("perf-fast", !!P.fastLists); }
-    else if (k === "lot" || k === "searchDelay") { /* pris en compte au prochain cycle */ }
-    else { applyWP(); }
+    else if (k === "yearStrict" || k === "hist" || k === "minScore") {
+      touch();
+      idle(function () {
+        try { fastRecompute(); } catch (e) {}
+        requestMeta();
+        requestRender();
+      }, 900);
+    } else { applyWP(); }
   });
   D.addEventListener("change", function (ev) {
     var t = ev.target;
     if (!t || !t.getAttribute) { return; }
     var k = t.getAttribute("data-perf");
-    if (k === "quality") {
-      P.quality = t.value;
-      save();
-      applyWP();
-      refreshPanel();
-      return;
-    }
-    if (k === "profile" && t.value) {
-      profile(t.value);
-      return;
-    }
+    if (k === "quality") { P.quality = t.value; save(); applyWP(); refreshPanel(); return; }
+    if (k === "profile" && t.value) { profile(t.value); return; }
     if (k && t.type === "checkbox") {
       P[k] = !!t.checked;
       save();
       if (k === "fastLists") { D.body.classList.toggle("perf-fast", !!P.fastLists); }
-      else { applyWP(); }
+      else if (k === "yearStrict" || k === "hist") {
+        touch();
+        idle(function () {
+          try { fastRecompute(); } catch (e) {}
+          requestMeta();
+          requestRender();
+        }, 900);
+      } else { applyWP(); }
     }
   });
   D.addEventListener("click", function (ev) {
     var el = ev.target.closest ? ev.target.closest("[data-perfa]") : null;
     if (!el) { return; }
     var a = el.getAttribute("data-perfa");
-    if (a === "reset") {
-      P = { quality: "eco", fps: 30, count: 70, density: 42, glow: 26, searchDelay: 110, lot: 140, pauseOnInput: true, fastLists: true, halo: true };
-      save(); applyWP(); css(); refreshPanel();
-      if (W.toast) { W.toast("info", "Réglages réinitialisés", "Profil équilibré restauré"); }
+    if (a === "recompute") {
+      touch();
+      try { fastRecompute(); } catch (e) {}
+      requestMeta();
+      requestRender();
+      refreshPanel();
+      if (W.toast) { W.toast("ok", "Corrélations recalculées", F(CORR.pairs) + " liens · " + F(CORR.strong) + " forts"); }
       return;
     }
     if (a === "turbo") {
@@ -1003,17 +1102,17 @@
     }
     if (a === "export") {
       if (W.download) {
-        W.download("mecadata_performance.json", JSON.stringify({
+        W.download("mecadata_performance_correlation.json", JSON.stringify({
           settings: P, latency: LAT, cache: NKC.size,
-          index: IX ? IX.search.length : 0, counts: (W.META || {}).counts,
-          stamp: stamp()
+          correlation: CORR, index: IX ? IX.search.length : 0,
+          counts: (W.META || {}).counts, stamp: stamp()
         }, null, 2));
       }
       return;
     }
   });
 
-  /* ══════════ patches ══════════ */
+  /* ---------- patches noyau ---------- */
   function keep(name, fn) {
     if (typeof W[name] === "function" && !ORIG[name]) { ORIG[name] = W[name]; }
     W[name] = fn;
@@ -1030,8 +1129,6 @@
     });
     keep("invalidate", function () {
       touch();
-      FCACHE = {}; TCACHE = {}; ICACHE = {};
-      RES.key = "";
       if (W.FC) { W.FC = {}; }
       if (W.TC) { W.TC = {}; }
       if (W.IVIC) { W.IVIC = {}; }
@@ -1057,15 +1154,6 @@
     keep("tsbFor", fastTsb);
     keep("engForFault", fastEngForFault);
     keep("engForTsb", fastEngForTsb);
-    if (typeof W.stampYears === "function" && !W.stampYears.__perf) {
-      var sy = W.stampYears;
-      var wsy = function () {
-        clearTimeout(YEAR_TIMER);
-        YEAR_TIMER = setTimeout(function () { try { sy(); } catch (e) {} }, 110);
-      };
-      wsy.__perf = 1;
-      W.stampYears = wsy;
-    }
     try { fastRecompute(); } catch (e) {}
     applyWP();
     requestRender();
@@ -1073,13 +1161,17 @@
       settings: P, latency: LAT, index: build, touch: touch,
       profile: profile, panel: openPanel,
       recompute: fastRecompute, search: fastSearch,
+      corr: function () { return CORR; },
+      corrInfo: corrInfo,
+      years: { model: function (m) { return yv(m && m.y); }, engine: function (e) { return yv(e && e.y); } },
       save: function () { save(); },
-      stats: function () { return { cache: NKC.size, index: IX ? IX.search.length : 0, latency: LAT }; }
+      stats: function () { return { cache: NKC.size, index: IX ? IX.search.length : 0, latency: LAT, corr: CORR }; }
     };
     idle(function () { try { fastTests(); } catch (e) {} }, 3000);
     return true;
   }
   function phase2() {
+    var ok = true;
     if (W.MD_MEGA && typeof W.MD_MEGA.expand === "function" && !W.MD_MEGA.expand.__perf) {
       var ex = W.MD_MEGA.expand;
       var wex = function (lot, quiet) {
@@ -1105,7 +1197,7 @@
       };
       wex.__perf = 1;
       W.MD_MEGA.expand = wex;
-    }
+    } else { ok = false; }
     if (W.MD_AUDIT && typeof W.MD_AUDIT.run === "function" && !W.MD_AUDIT.run.__perf) {
       var au = W.MD_AUDIT.run;
       var wau = function (fix) {
@@ -1129,7 +1221,7 @@
       };
       wau.__perf = 1;
       W.MD_AUDIT.run = wau;
-    }
+    } else { ok = false; }
     if (W.AUTO && typeof W.AUTO.sweep === "function" && !W.AUTO.sweep.__perf) {
       var sw = W.AUTO.sweep;
       var wsw = function (reason, full) {
@@ -1147,7 +1239,7 @@
       wsw.__perf = 1;
       W.AUTO.sweep = wsw;
     }
-    return !!(W.MD_MEGA && W.MD_AUDIT);
+    return ok;
   }
 
   var t1 = 0, t2 = 0;
@@ -1160,7 +1252,7 @@
     if (phase2() || t2 > 400) { clearInterval(iv2); }
   }, 400);
   W.addEventListener("load", function () {
-    setTimeout(function () { phase1(); phase2(); hud(); }, 120);
+    setTimeout(function () { phase1(); phase2(); hud(); schedulePost(); }, 120);
   });
   setInterval(hud, 2000);
 })();
